@@ -5,99 +5,22 @@
 <img src="https://balaboom123-capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=6,11,20&height=180&section=header&text=SignDATA&fontSize=42&fontColor=fff&animation=twinkling&fontAlignY=32&desc=Config-driven%20Pose/Video%20Preprocessing%20Pipeline&descAlignY=52&descSize=18" alt="SignDATA – Data Pipeline for Sign Language Translation"/>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-10B981?style=flat" alt="License"/></a>
+  <a href="https://arxiv.org/pdf/2604.20357"><img src="https://img.shields.io/badge/arXiv-2604.20357-b31b1b?style=flat" alt="arXiv"/></a> &nbsp;
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-10B981?style=flat" alt="License"/></a> &nbsp;
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue?style=flat" alt="Python 3.11+"/></a>
-  <a href="https://github.com/balaboom123/signdata-slt/stargazers"><img src="https://img.shields.io/github/stars/balaboom123/signdata-slt?style=flat&color=F59E0B" alt="Stars"/></a>
-  <a href="https://github.com/balaboom123/signdata-slt/issues"><img src="https://img.shields.io/github/issues/balaboom123/signdata-slt?style=flat&color=EF4444" alt="Issues"/></a>
 </p>
 
-A config-driven, modular pipeline for preprocessing multiple **Sign Language (SL)** datasets.
-Supports two landmark extractors (**MediaPipe Holistic** and **MMPose RTMPose3D**) and two output modes (pose landmarks and video clips).
-
-<!-- Quick Links -->
-<div align="center">
-  <a href="#-quick-start"><img src="https://img.shields.io/badge/🚀_Quick_Start-4285F4?style=flat-square" alt="Quick Start"/></a>
-  <a href="docs/installation.md"><img src="https://img.shields.io/badge/📖_Installation-34A853?style=flat-square" alt="Installation"/></a>
-  <a href="docs/pipeline-stages.md"><img src="https://img.shields.io/badge/🛠️_Pipeline_Stages-EA4335?style=flat-square" alt="Pipeline Stages"/></a>
-  <a href="docs/architecture.md"><img src="https://img.shields.io/badge/🏗️_Architecture-FBBC05?style=flat-square" alt="Architecture"/></a>
-</div>
-
-<br/>
+A config-driven, modular pipeline for preprocessing multiple **Sign Language** datasets.
+Supports multiple extractors including **MediaPipe Holistic**, **MMPose**, **MMDet**, and **YOLO**. Supports two pipeline modes including **Pose Landmarks** and **Video Clips**.
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-<div align="center">
-<table>
-<tr>
-<td width="50%">
-
-### 📝 Config-Driven
-YAML job configs, experiment configs, and CLI overrides
-
-### 🦴 Two Extractors
-MediaPipe Holistic (553 keypoints) and MMPose RTMPose3D (133 keypoints)
-
-### 🎬 Two Pipeline Modes
-`pose` (landmarks) and `video` (clip extraction)
-
-</td>
-<td width="50%">
-
-### 🧩 Registry Architecture
-Add datasets, processors, and extractors via decorators
-
-### ⚡ Parallel Processing
-Multi-worker extraction, normalization, and clipping
-
-### 📦 WebDataset Output
-Sharded tar archives for efficient training data loading
-
-</td>
-</tr>
-</table>
-</div>
-
-> 📖 **New?** See the [Installation Guide](docs/installation.md) to get started.
-
----
-
-## Installation
-
-```bash
-git clone https://github.com/balaboom123/signdata-slt.git
-cd signdata-slt
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Optional: MMPose (GPU required)
-
-MediaPipe works on CPU out of the box. MMPose requires a CUDA-capable GPU and additional dependencies -- see the [Installation Guide](docs/installation.md) for full setup instructions.
-
----
-
-## Quick Start
-
-```bash
-# Download YouTube-ASL videos, extract MediaPipe landmarks, normalize, and package into WebDataset shards
-python -m signdata run configs/jobs/youtube_asl/mediapipe.yaml
-
-# Extract MMPose landmarks from pre-downloaded How2Sign data (CUDA required)
-python -m signdata run configs/jobs/how2sign/mmpose.yaml
-
-# Override any config value from the command line (e.g. more workers, stop after extraction)
-python -m signdata run configs/jobs/youtube_asl/mediapipe.yaml \
-  --override processing.max_workers=8 stop_at=extract
-```
-
----
-
-## Output
-
-Both modes produce [WebDataset](https://github.com/webdataset/webdataset) tar shards for efficient training data loading. See [Pipeline Stages](docs/pipeline-stages.md) for detailed output formats and data shapes.
+- **Config-Driven** — YAML job configs, experiment configs, and CLI overrides
+- **Multiple Extractors** — MediaPipe Holistic, MMPose, MMDet, and YOLO
+- **Two Pipeline Modes** — `pose` (landmarks) and `video` (clip extraction)
+- **WebDataset Output** — sharded tar archives for efficient training data loading
 
 ---
 
@@ -112,6 +35,40 @@ For paper-aligned preprocessing methodology, see [Research-Aligned Preprocessing
 
 ---
 
+## Installation
+
+```bash
+git clone https://github.com/balaboom123/signdata-slt.git
+cd signdata-slt
+python -m venv venv
+source venv/bin/activate  # Linux/macOS — use venv\Scripts\activate on Windows
+pip install -r requirements.txt
+```
+
+### Optional: GPU-based Extractors (MMPose, MMDet, YOLO)
+
+MediaPipe works on CPU out of the box. MMPose, MMDet, and YOLO require a CUDA-capable GPU and additional dependencies -- see the [Installation Guide](docs/installation.md) for full setup instructions.
+
+---
+
+## Quick Start
+
+```bash
+# YouTube-ASL: download, extract MediaPipe landmarks, normalize, package
+python -m signdata run configs/jobs/youtube_asl/mediapipe.yaml
+
+# How2Sign: extract MMPose landmarks (CUDA required)
+python -m signdata run configs/jobs/how2sign/mmpose.yaml
+
+# Override config values from the command line
+python -m signdata run configs/jobs/youtube_asl/mediapipe.yaml \
+  --override processing.max_workers=8 stop_at=extract
+```
+
+Both modes produce [WebDataset](https://github.com/webdataset/webdataset) tar shards for efficient training data loading. See [Pipeline Stages](docs/pipeline-stages.md) for detailed output formats and data shapes.
+
+---
+
 ## Documentation
 
 - [Installation Guide](docs/installation.md) -- base setup and MMPose GPU dependencies
@@ -121,6 +78,19 @@ For paper-aligned preprocessing methodology, see [Research-Aligned Preprocessing
 - [Datasets](docs/datasets.md) -- YouTube-ASL vs How2Sign setup
 - [Contributing](CONTRIBUTING.md) -- required dataset package structure and extension guide
 - [Research-Aligned Preprocessing](docs/research-preprocessing.md) -- paper-aligned preprocessing notes
+
+## Citation
+
+If you use SignDATA in your research, please cite:
+
+```bibtex
+@Article{chen2026signdata,
+    author  = {Kuanwei Chen and Tingyi Lin},
+    journal = {arXiv:2604.20357},
+    title   = {SignDATA: Data Pipeline for Sign Language Translation},
+    year    = {2026},
+}
+```
 
 ## License
 
