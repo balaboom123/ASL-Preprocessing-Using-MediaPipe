@@ -10,7 +10,8 @@ import pandas as pd
 
 from .._ingestion.availability import apply_availability_policy
 from .._ingestion.media import get_video_duration
-from .source import WLASLSourceConfig
+from ...utils.manifest import find_video_file
+from .source import WLASLSourceConfig, iter_filtered_instances
 
 
 def build(config, source: WLASLSourceConfig, log: logging.Logger) -> pd.DataFrame:
@@ -62,51 +63,57 @@ def _flatten_instances(
     records = []
     use_preprocessed_timing = source.download_mode == "validate"
 
-    for gloss_idx, entry in enumerate(entries):
+    for gloss_idx, inst_idx, entry, inst in iter_filtered_instances(entries, source):
         gloss = entry.get("gloss", "")
-        instances = entry.get("instances", [])
-        for inst_idx, inst in enumerate(instances):
-            video_id = inst.get("video_id", "")
-            sample_id = video_id if video_id else f"{gloss_idx}-{inst_idx}"
+        video_id = inst.get("video_id", "")
+        variation_id = _coerce_int(inst.get("variation_id"))
+        sample_id = video_id if video_id else f"{gloss_idx}-{inst_idx}"
 
-            fps = _coerce_float(inst.get("fps"), default=0.0)
-            frame_start = _coerce_int(inst.get("frame_start"))
-            frame_end = _coerce_int(inst.get("frame_end"))
-            bbox = inst.get("bbox")
-            has_bbox = isinstance(bbox, (list, tuple)) and len(bbox) >= 4
+        fps = _coerce_float(inst.get("fps"), default=0.0)
+        frame_start = _coerce_int(inst.get("frame_start"))
+        frame_end = _coerce_int(inst.get("frame_end"))
+        bbox = inst.get("bbox")
+        has_bbox = isinstance(bbox, (list, tuple)) and len(bbox) >= 4
 
-            start, end = _resolve_timing(
-                video_id=video_id,
-                fps=fps,
-                frame_start=frame_start,
-                frame_end=frame_end,
-                video_dir=video_dir,
-                use_preprocessed_timing=use_preprocessed_timing,
-            )
+        start, end = _resolve_timing(
+            video_id=video_id,
+            fps=fps,
+            frame_start=frame_start,
+            frame_end=frame_end,
+            video_dir=video_dir,
+            use_preprocessed_timing=use_preprocessed_timing,
+        )
 
-            records.append({
-                "SAMPLE_ID": sample_id,
-                "VIDEO_ID": video_id,
-                "REL_PATH": f"{video_id}.mp4",
-                "SPLIT": str(inst.get("split", "")),
-                "GLOSS": gloss,
-                "CLASS_ID": gloss_idx,
-                "SIGNER_ID": str(inst.get("signer_id", "")),
-                "SOURCE_URL": str(inst.get("url", "")),
-                "SOURCE": str(inst.get("source", "")),
-                "FPS": fps,
-                "VARIATION_ID": _coerce_int(inst.get("variation_id")),
-                "FRAME_START": frame_start,
-                "FRAME_END": frame_end,
-                "START": start,
-                "END": end,
-                "BBOX_X1": _coerce_float(bbox[0]) if has_bbox else None,
-                "BBOX_Y1": _coerce_float(bbox[1]) if has_bbox else None,
-                "BBOX_X2": _coerce_float(bbox[2]) if has_bbox else None,
-                "BBOX_Y2": _coerce_float(bbox[3]) if has_bbox else None,
-                "PERSON_DETECTED": has_bbox,
-            })
+        records.append({
+            "SAMPLE_ID": sample_id,
+            "VIDEO_ID": video_id,
+            "REL_PATH": _resolve_rel_path(video_id, sample_id, video_dir),
+            "SPLIT": str(inst.get("split", "")),
+            "GLOSS": gloss,
+            "CLASS_ID": gloss_idx,
+            "SIGNER_ID": str(inst.get("signer_id", "")),
+            "SOURCE_URL": str(inst.get("url", "")),
+            "SOURCE": str(inst.get("source", "")),
+            "FPS": fps,
+            "VARIATION_ID": variation_id,
+            "FRAME_START": frame_start,
+            "FRAME_END": frame_end,
+            "START": start,
+            "END": end,
+            "BBOX_X1": _coerce_float(bbox[0]) if has_bbox else None,
+            "BBOX_Y1": _coerce_float(bbox[1]) if has_bbox else None,
+            "BBOX_X2": _coerce_float(bbox[2]) if has_bbox else None,
+            "BBOX_Y2": _coerce_float(bbox[3]) if has_bbox else None,
+            "PERSON_DETECTED": has_bbox,
+        })
     return records
+
+
+def _resolve_rel_path(video_id: str, sample_id: str, video_dir: Optional[str]) -> str:
+    stem = video_id or sample_id
+    if video_dir:
+        return find_video_file(video_dir, stem).name
+    return f"{stem}.mp4"
 
 
 def _coerce_int(value: Any) -> Optional[int]:
@@ -196,8 +203,8 @@ def _get_clip_duration(video_id: str, video_dir: Optional[str]) -> float:
     if not video_id or not video_dir:
         return 0.0
 
-    video_path = os.path.join(video_dir, f"{video_id}.mp4")
-    if os.path.exists(video_path):
-        return get_video_duration(video_path)
+    video_path = find_video_file(video_dir, video_id)
+    if video_path.exists():
+        return get_video_duration(str(video_path))
 
     return 0.0

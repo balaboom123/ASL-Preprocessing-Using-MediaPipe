@@ -249,6 +249,90 @@ class TestWLASLDownload:
             "skipped": 1,
         }
 
+    def test_download_missing_applies_split_and_subset_filters(self, tmp_path, monkeypatch):
+        metadata_path = tmp_path / "WLASL_v0.3.json"
+        _write_metadata(metadata_path, [
+            {
+                "gloss": "book",
+                "instances": [
+                    {
+                        "video_id": "00001",
+                        "split": "train",
+                        "url": "https://example.com/book-train.mp4",
+                    },
+                    {
+                        "video_id": "00002",
+                        "split": "val",
+                        "url": "https://example.com/book-val.mp4",
+                    },
+                ],
+            },
+            {
+                "gloss": "drink",
+                "instances": [
+                    {
+                        "video_id": "00003",
+                        "split": "train",
+                        "url": "https://example.com/drink-train.mp4",
+                    },
+                ],
+            },
+            {
+                "gloss": "sleep",
+                "instances": [
+                    {
+                        "video_id": "00004",
+                        "split": "train",
+                        "url": "https://example.com/sleep-train.mp4",
+                    },
+                ],
+            },
+        ])
+
+        video_dir = tmp_path / "videos"
+        video_dir.mkdir()
+        (video_dir / "00001.mp4").touch()
+        manifest_path = tmp_path / "manifest.tsv"
+        root_dir = tmp_path / "root"
+        root_dir.mkdir()
+
+        captured = {}
+
+        def fake_download_video_urls(video_urls, video_dir_arg, **kwargs):
+            captured["video_urls"] = video_urls
+            captured["video_dir"] = video_dir_arg
+            captured["kwargs"] = kwargs
+            return {"downloaded": 1, "errors": 0, "missing": []}
+
+        monkeypatch.setattr(wlasl_source, "download_video_urls", fake_download_video_urls)
+
+        cfg = _make_config(
+            metadata_path,
+            video_dir,
+            manifest_path,
+            source={
+                "download_mode": "download_missing",
+                "split": "train",
+                "subset": 2,
+            },
+            root_dir=root_dir,
+        )
+
+        adapter = WLASLDataset()
+        context = PipelineContext(config=cfg, dataset=adapter)
+        context = adapter.download(cfg, context)
+
+        assert captured["video_urls"] == {
+            "00003": "https://example.com/drink-train.mp4",
+        }
+        assert captured["video_dir"] == str(video_dir)
+        assert context.stats["dataset.download"] == {
+            "total": 2,
+            "downloaded": 1,
+            "errors": 0,
+            "skipped": 1,
+        }
+
 
 class TestWLASLBuildManifest:
     def _make_context(self, config):
@@ -462,6 +546,45 @@ class TestWLASLBuildManifest:
 
         assert context.manifest_df.iloc[0]["START"] == 0.0
         assert context.manifest_df.iloc[0]["END"] == 3.6
+
+    def test_build_manifest_uses_existing_video_extension_for_rel_path(self, tmp_path, monkeypatch):
+        metadata_path = tmp_path / "WLASL_v0.3.json"
+        _write_metadata(metadata_path, [
+            {
+                "gloss": "book",
+                "instances": [
+                    {
+                        "video_id": "00001",
+                        "split": "train",
+                        "fps": 25,
+                        "frame_start": 0,
+                        "frame_end": 50,
+                    },
+                ],
+            },
+        ])
+
+        video_dir = tmp_path / "videos"
+        video_dir.mkdir()
+        (video_dir / "00001.webm").touch()
+        manifest_path = tmp_path / "manifest.tsv"
+        cfg = _make_config(metadata_path, video_dir, manifest_path)
+
+        captured = {}
+
+        def fake_get_video_duration(path):
+            captured["path"] = path
+            return 3.6
+
+        monkeypatch.setattr(wlasl_manifest, "get_video_duration", fake_get_video_duration)
+
+        context = self._make_context(cfg)
+        context = WLASLDataset().build_manifest(cfg, context)
+
+        assert context.manifest_df.iloc[0]["REL_PATH"] == "00001.webm"
+        assert context.manifest_df.iloc[0]["START"] == 0.0
+        assert context.manifest_df.iloc[0]["END"] == 3.6
+        assert captured["path"].endswith("00001.webm")
 
     def test_build_manifest_download_missing_uses_source_timing(self, tmp_path):
         metadata_path = tmp_path / "WLASL_v0.3.json"

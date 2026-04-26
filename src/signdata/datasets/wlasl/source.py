@@ -29,6 +29,19 @@ class WLASLSourceConfig(BaseModel):
     concurrent_fragments: int = 5
 
 
+def iter_filtered_instances(entries: list[dict[str, Any]], source: WLASLSourceConfig):
+    """Yield WLASL instances after applying subset/split filters."""
+    for gloss_idx, entry in enumerate(entries):
+        if source.subset > 0 and gloss_idx >= source.subset:
+            continue
+
+        for inst_idx, inst in enumerate(entry.get("instances", [])):
+            split = str(inst.get("split", ""))
+            if source.split != "all" and split != source.split:
+                continue
+            yield gloss_idx, inst_idx, entry, inst
+
+
 def get_source_config(config) -> WLASLSourceConfig:
     source = dict(config.dataset.source)
     if not source.get("metadata_json") and source.get("annotation_json"):
@@ -83,12 +96,11 @@ def download_missing(
         entries = json.load(f)
 
     video_urls: Dict[str, str] = {}
-    for entry in entries:
-        for inst in entry.get("instances", []):
-            url = inst.get("url", "")
-            video_id = inst.get("video_id", "")
-            if url and video_id:
-                video_urls[video_id] = url
+    for _, _, _, inst in iter_filtered_instances(entries, source):
+        url = inst.get("url", "")
+        video_id = inst.get("video_id", "")
+        if url and video_id:
+            video_urls[video_id] = url
 
     all_ids = set(video_urls.keys())
     existing = get_existing_video_ids(video_dir)
