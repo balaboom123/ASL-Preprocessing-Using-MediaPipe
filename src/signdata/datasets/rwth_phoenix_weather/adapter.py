@@ -25,14 +25,17 @@ class RWTHPhoenixWeatherDataset(DatasetAdapter):
                 "unpacked PHOENIX release directory."
             )
 
+    def get_source_config(self, config) -> _source.RWTHPhoenixWeatherSourceConfig:
+        return _source.get_source_config(config)
+
     def download(self, config, context):
-        source = _source.get_source_config(config)
+        source = self.get_source_config(config)
         stats = _source.prepare(source, config, self.logger)
         context.stats["dataset.download"] = stats
         return context
 
     def build_manifest(self, config, context):
-        source = _source.get_source_config(config)
+        source = self.get_source_config(config)
         df = _manifest.build(config, source, self.logger)
         context.manifest_path = Path(config.paths.manifest)
         context.manifest_df = df

@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import pandas as pd
 from pydantic import BaseModel
@@ -19,7 +19,7 @@ class RWTHPhoenixWeatherSourceConfig(BaseModel):
     release_dir: str = ""
     variant: str = "phoenix_2014_t"
     split: str = "all"
-    prepare_mode: str = "validate"
+    prepare_mode: str = "materialize_missing"
     availability_policy: AvailabilityPolicy = "drop_unavailable"
     video_fps: float = 25.0
 
@@ -39,11 +39,13 @@ def find_corpus_csvs(release_dir: Path, split: str) -> List[Path]:
 
 def derive_clip_id(name: str) -> str:
     """Normalise a PHOENIX folder/id field into a safe file stem."""
-    name = name.strip()
-    name = name.replace("/*", "").rstrip("/")
-    if name.startswith("/"):
-        name = name.lstrip("/")
-    return name.replace("/", "_").replace(" ", "_")
+    return _normalise_frame_path(name).lstrip("/").replace("/", "_").replace(" ", "_")
+
+
+def _normalise_frame_path(path_value: str) -> str:
+    """Strip trailing frame-glob suffixes from PHOENIX folder paths."""
+    path = Path(path_value.strip().rstrip("/"))
+    return str(path.parent) if any(char in path.name for char in "*?[]") else str(path)
 
 
 def prepare(
@@ -129,6 +131,8 @@ def _materialise_split(
         log.error("Failed to read corpus CSV %s: %s", csv_path, exc)
         return 0, 1, 0
 
+    df.columns = [column.strip().lower() for column in df.columns]
+
     id_col = "id" if "id" in df.columns else ("name" if "name" in df.columns else None)
     folder_col = "folder" if "folder" in df.columns else None
 
@@ -143,10 +147,15 @@ def _materialise_split(
     for _, row in df.iterrows():
         raw_id = str(row[id_col])
         clip_id = derive_clip_id(raw_id)
-
-        raw_folder = str(row[folder_col]) if folder_col and pd.notna(row[folder_col]) else raw_id
-        frame_dir = release_dir / raw_folder.lstrip("/")
+        raw_folder = raw_id
+        if folder_col and pd.notna(row[folder_col]):
+            raw_folder = str(row[folder_col])
+        frame_dir = release_dir / _normalise_frame_path(raw_folder).lstrip("/")
         output_path = video_dir / split / f"{clip_id}.mp4"
+
+        if output_path.exists() and not overwrite:
+            validated += 1
+            continue
 
         if not frame_dir.is_dir():
             log.debug(
@@ -158,12 +167,19 @@ def _materialise_split(
 
         try:
             materialize_frames_to_video(frame_dir, output_path, fps=fps, overwrite=overwrite)
-            if output_path.exists():
-                materialized += 1
-            else:
-                validated += 1
         except Exception as exc:
             log.warning("Failed to materialise clip '%s': %s", clip_id, exc)
             errors += 1
+            continue
+
+        if output_path.exists():
+            materialized += 1
+            continue
+
+        log.warning(
+            "Materialisation did not produce an output file for clip '%s': %s",
+            clip_id, output_path,
+        )
+        errors += 1
 
     return materialized, errors, validated

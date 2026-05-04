@@ -15,6 +15,8 @@ from .source import (
     find_corpus_csvs,
 )
 
+_log = logging.getLogger(__name__)
+
 
 def build(
     config,
@@ -77,9 +79,6 @@ def _load_split_df(
     video_fps: float,
 ) -> Optional[pd.DataFrame]:
     """Parse a single corpus CSV and return a canonical DataFrame."""
-    import logging as _logging
-    _log = _logging.getLogger(__name__)
-
     try:
         raw = pd.read_csv(csv_path, delimiter="|")
     except Exception as exc:
