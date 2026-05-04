@@ -70,7 +70,8 @@ class TestRealRegistrations:
         assert "youtube_asl" in DATASET_REGISTRY
         assert "how2sign" in DATASET_REGISTRY
         assert "openasl" in DATASET_REGISTRY
-        assert len(DATASET_REGISTRY) >= 3
+        assert "wlasl" in DATASET_REGISTRY
+        assert len(DATASET_REGISTRY) >= 4
 
     def test_processors_registered(self):
         import signdata.processors  # noqa: F401

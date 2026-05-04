@@ -1,0 +1,35 @@
+base: ../../base/datasets/wlasl.yaml
+
+processing:
+  enabled: true
+  processor: video2pose
+  detection: "null"
+  pose: mediapipe
+  sample_rate: 0.5
+  max_workers: 1
+  pose_config:
+    model_complexity: 1
+    min_detection_confidence: 0.5
+    min_tracking_confidence: 0.5
+    refine_face_landmarks: true
+    batch_size: 16
+
+post_processing:
+  enabled: true
+  recipes:
+    - normalize
+  normalize:
+    keypoint_preset: mediapipe_553_to_85
+    mode: xy_isotropic_z_minmax
+    mask_empty_frames: true
+
+output:
+  enabled: true
+  type: webdataset
+
+run_name: default
+
+paths:
+  root: dataset/wlasl
+  videos: dataset/wlasl/videos
+  manifest: dataset/wlasl/manifest.tsv

@@ -1,0 +1,30 @@
+base: ../../base/datasets/wlasl.yaml
+
+processing:
+  enabled: true
+  processor: video2crop
+  detection: yolo
+  sample_rate: 0.5
+  max_workers: 4
+  detection_config:
+    model: yolo11m.pt
+    device: cpu
+    confidence_threshold: 0.5
+    batch_size: 16
+  video_config:
+    codec: libx264
+    padding: 0.0
+
+post_processing:
+  enabled: false
+
+output:
+  enabled: true
+  type: webdataset
+
+run_name: default
+
+paths:
+  root: dataset/wlasl
+  videos: dataset/wlasl/videos
+  manifest: dataset/wlasl/manifest.tsv

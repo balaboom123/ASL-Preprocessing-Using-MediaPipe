@@ -66,6 +66,10 @@ configs/
     │   ├── mediapipe.yaml
     │   ├── mmpose.yaml
     │   └── video.yaml
+    ├── wlasl/
+    │   ├── mediapipe.yaml
+    │   ├── mmpose.yaml
+    │   └── video.yaml
     └── how2sign/
         ├── mediapipe.yaml
         ├── mmpose.yaml
@@ -120,8 +124,10 @@ If omitted, the loader derives these defaults from `paths.root`:
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `video_ids_file` | `str` | `""` | Video ID list for YouTube-style datasets |
+| `metadata_json` | `str` | `""` | Canonical WLASL metadata JSON path (`annotation_json` is accepted as a compatibility alias) |
 | `languages` | `list[str]` | adapter defaults | Transcript language codes |
-| `availability_policy` | `str` | `"drop_unavailable"` | Video availability handling policy for YouTube-ASL |
+| `availability_policy` | `str` | `"drop_unavailable"` | Availability handling policy for datasets that may have missing clips |
+| `download_mode` | `str` | adapter defaults | Dataset acquisition mode such as `validate` or `download_missing`; WLASL uses `validate` for local preprocessed clips and `download_missing` for raw-source URL fetches |
 | `download_format` | `str` | `"worstvideo[...]+worstaudio/.../best"` | yt-dlp format selector |
 | `rate_limit` | `str` | `"5M"` | Download rate limit |
 | `concurrent_fragments` | `int` | `5` | Parallel download fragments |
@@ -132,8 +138,12 @@ If omitted, the loader derives these defaults from `paths.root`:
 | `min_duration` | `float` | `0.2` | Min segment duration |
 | `max_duration` | `float` | `60.0` | Max segment duration |
 | `manifest_csv` | `str` | `""` | Existing manifest path for datasets such as How2Sign |
-| `split` | `str` | `"all"` | Split label for datasets such as How2Sign |
+| `split` | `str` | `"all"` | Split label for datasets such as How2Sign and WLASL |
+| `subset` | `int` | `0` | Optional class-count subset for datasets such as WLASL |
 | `text_processing` | `dict` | adapter defaults | Text cleanup options for transcript-derived manifests |
+
+Relative file paths in `dataset.source`, such as `video_ids_file`, `manifest_csv`,
+`metadata_json`, and `annotation_json`, are resolved from the project root.
 
 ## `processing`
 

@@ -13,7 +13,7 @@ from .._ingestion.availability import (
     get_existing_video_ids,
     write_acquire_report,
 )
-from .._ingestion.youtube import download_youtube_videos
+from .._ingestion.youtube import download_video_urls
 
 
 class WLASLSourceConfig(BaseModel):
@@ -29,8 +29,24 @@ class WLASLSourceConfig(BaseModel):
     concurrent_fragments: int = 5
 
 
+def iter_filtered_instances(entries: list[dict[str, Any]], source: WLASLSourceConfig):
+    """Yield WLASL instances after applying subset/split filters."""
+    for gloss_idx, entry in enumerate(entries):
+        if source.subset > 0 and gloss_idx >= source.subset:
+            continue
+
+        for inst_idx, inst in enumerate(entry.get("instances", [])):
+            split = str(inst.get("split", ""))
+            if source.split != "all" and split != source.split:
+                continue
+            yield gloss_idx, inst_idx, entry, inst
+
+
 def get_source_config(config) -> WLASLSourceConfig:
-    return WLASLSourceConfig(**config.dataset.source)
+    source = dict(config.dataset.source)
+    if not source.get("metadata_json") and source.get("annotation_json"):
+        source["metadata_json"] = source["annotation_json"]
+    return WLASLSourceConfig(**source)
 
 
 def validate_release(
@@ -79,15 +95,14 @@ def download_missing(
     with open(metadata_json, "r", encoding="utf-8") as f:
         entries = json.load(f)
 
-    url_to_id: Dict[str, str] = {}
-    for entry in entries:
-        for inst in entry.get("instances", []):
-            url = inst.get("url", "")
-            video_id = inst.get("video_id", "")
-            if url and video_id:
-                url_to_id[video_id] = url
+    video_urls: Dict[str, str] = {}
+    for _, _, _, inst in iter_filtered_instances(entries, source):
+        url = inst.get("url", "")
+        video_id = inst.get("video_id", "")
+        if url and video_id:
+            video_urls[video_id] = url
 
-    all_ids = set(url_to_id.keys())
+    all_ids = set(video_urls.keys())
     existing = get_existing_video_ids(video_dir)
     to_download_ids = sorted(all_ids - existing)
 
@@ -100,8 +115,8 @@ def download_missing(
 
     log.info("Downloading %d / %d videos...", len(to_download_ids), len(all_ids))
 
-    result = download_youtube_videos(
-        to_download_ids,
+    result = download_video_urls(
+        {video_id: video_urls[video_id] for video_id in to_download_ids},
         video_dir,
         download_format=source.download_format,
         rate_limit=source.rate_limit,

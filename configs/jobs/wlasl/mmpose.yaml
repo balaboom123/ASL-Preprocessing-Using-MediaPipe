@@ -1,0 +1,41 @@
+base: ../../base/datasets/wlasl.yaml
+
+processing:
+  enabled: true
+  processor: video2pose
+  detection: mmdet
+  pose: mmpose
+  sample_rate: 0.5
+  max_workers: 1
+  detection_config:
+    det_model_config: resources/detection_models/rtmdet/configs/rtmdet_nano_320-8xb32_coco-person.py
+    det_model_checkpoint: resources/detection_models/rtmdet/checkpoints/rtmdet_nano_8xb32-100e_coco-obj365-person-05d8511e.pth
+    device: "cuda:0"
+    batch_size: 16
+  pose_config:
+    pose_model_config: resources/pose_models/mmpose/configs/rtmw3d-l_8xb64_cocktail14-384x288.py
+    pose_model_checkpoint: resources/pose_models/mmpose/checkpoints/rtmw3d-l_8xb64_cocktail14-384x288-794dbc78_20240626.pth
+    device: "cuda:0"
+    bbox_threshold: 0.5
+    keypoint_threshold: 0.3
+    batch_size: 16
+
+post_processing:
+  enabled: true
+  recipes:
+    - normalize
+  normalize:
+    keypoint_preset: mmpose_133_to_85
+    mode: xy_isotropic_z_minmax
+    mask_empty_frames: true
+
+output:
+  enabled: true
+  type: webdataset
+
+run_name: default
+
+paths:
+  root: dataset/wlasl
+  videos: dataset/wlasl/videos
+  manifest: dataset/wlasl/manifest.tsv

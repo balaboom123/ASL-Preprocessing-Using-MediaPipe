@@ -17,14 +17,18 @@ class WLASLDataset(DatasetAdapter):
     @classmethod
     def validate_config(cls, config) -> None:
         source = config.dataset.source
-        if not source.get("metadata_json"):
+        if not source.get("metadata_json") and not source.get("annotation_json"):
             raise ValueError(
                 "wlasl requires dataset.source.metadata_json pointing to "
-                "the official WLASL_v0.3.json file"
+                "the official WLASL_v0.3.json file "
+                "(annotation_json is accepted as a compatibility alias)"
             )
 
+    def get_source_config(self, config) -> _source.WLASLSourceConfig:
+        return _source.get_source_config(config)
+
     def download(self, config, context):
-        source = _source.get_source_config(config)
+        source = self.get_source_config(config)
 
         if source.download_mode == "validate":
             stats = _source.validate_release(source, config, self.logger)
@@ -40,7 +44,7 @@ class WLASLDataset(DatasetAdapter):
         return context
 
     def build_manifest(self, config, context):
-        source = _source.get_source_config(config)
+        source = self.get_source_config(config)
         df = _manifest.build(config, source, self.logger)
         context.manifest_path = Path(config.paths.manifest)
         context.manifest_df = df

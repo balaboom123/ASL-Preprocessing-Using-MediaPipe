@@ -75,7 +75,7 @@ Both modes produce [WebDataset](https://github.com/webdataset/webdataset) tar sh
 - [Architecture](docs/architecture.md) -- system design, registry, pipeline flow
 - [Configuration](docs/configuration.md) -- job/experiment layout and CLI overrides
 - [Pipeline Stages](docs/pipeline-stages.md) -- recipe stages and optional stages
-- [Datasets](docs/datasets.md) -- YouTube-ASL vs How2Sign setup
+- [Datasets](docs/datasets.md) -- YouTube-ASL, How2Sign, and WLASL setup
 - [Contributing](CONTRIBUTING.md) -- required dataset package structure and extension guide
 - [Research-Aligned Preprocessing](docs/research-preprocessing.md) -- paper-aligned preprocessing notes
 

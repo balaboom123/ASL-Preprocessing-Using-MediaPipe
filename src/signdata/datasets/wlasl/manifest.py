@@ -10,7 +10,8 @@ import pandas as pd
 
 from .._ingestion.availability import apply_availability_policy
 from .._ingestion.media import get_video_duration
-from .source import WLASLSourceConfig
+from ...utils.manifest import find_video_file
+from .source import WLASLSourceConfig, iter_filtered_instances
 
 
 def build(config, source: WLASLSourceConfig, log: logging.Logger) -> pd.DataFrame:
@@ -28,7 +29,7 @@ def build(config, source: WLASLSourceConfig, log: logging.Logger) -> pd.DataFram
     with open(metadata_json, "r", encoding="utf-8") as f:
         entries = json.load(f)
 
-    records = _flatten_instances(entries, video_dir)
+    records = _flatten_instances(entries, video_dir, source)
 
     if not records:
         raise RuntimeError(
@@ -57,43 +58,76 @@ def build(config, source: WLASLSourceConfig, log: logging.Logger) -> pd.DataFram
 def _flatten_instances(
     entries: List[Dict],
     video_dir: Optional[str],
+    source: WLASLSourceConfig,
 ) -> List[Dict]:
     records = []
-    for gloss_idx, entry in enumerate(entries):
+    use_preprocessed_timing = source.download_mode == "validate"
+
+    for gloss_idx, inst_idx, entry, inst in iter_filtered_instances(entries, source):
         gloss = entry.get("gloss", "")
-        instances = entry.get("instances", [])
-        for inst_idx, inst in enumerate(instances):
-            video_id = inst.get("video_id", "")
-            sample_id = video_id if video_id else f"{gloss_idx}-{inst_idx}"
+        video_id = inst.get("video_id", "")
+        variation_id = _coerce_int(inst.get("variation_id"))
+        sample_id = video_id if video_id else f"{gloss_idx}-{inst_idx}"
 
-            fps_raw = inst.get("fps", 0)
-            try:
-                fps = float(fps_raw) if fps_raw else 0.0
-            except (TypeError, ValueError):
-                fps = 0.0
+        fps = _coerce_float(inst.get("fps"), default=0.0)
+        frame_start = _coerce_int(inst.get("frame_start"))
+        frame_end = _coerce_int(inst.get("frame_end"))
+        bbox = inst.get("bbox")
+        has_bbox = isinstance(bbox, (list, tuple)) and len(bbox) >= 4
 
-            start, end = _resolve_timing(
-                video_id=video_id,
-                fps=fps,
-                frame_start=inst.get("frame_start"),
-                frame_end=inst.get("frame_end"),
-                video_dir=video_dir,
-            )
+        start, end = _resolve_timing(
+            video_id=video_id,
+            fps=fps,
+            frame_start=frame_start,
+            frame_end=frame_end,
+            video_dir=video_dir,
+            use_preprocessed_timing=use_preprocessed_timing,
+        )
 
-            records.append({
-                "SAMPLE_ID": sample_id,
-                "VIDEO_ID": video_id,
-                "REL_PATH": f"{video_id}.mp4",
-                "SPLIT": str(inst.get("split", "")),
-                "GLOSS": gloss,
-                "CLASS_ID": gloss_idx,
-                "SIGNER_ID": str(inst.get("signer_id", "")),
-                "SOURCE_URL": str(inst.get("url", "")),
-                "FPS": fps,
-                "START": start,
-                "END": end,
-            })
+        records.append({
+            "SAMPLE_ID": sample_id,
+            "VIDEO_ID": video_id,
+            "REL_PATH": _resolve_rel_path(video_id, sample_id, video_dir),
+            "SPLIT": str(inst.get("split", "")),
+            "GLOSS": gloss,
+            "CLASS_ID": gloss_idx,
+            "SIGNER_ID": str(inst.get("signer_id", "")),
+            "SOURCE_URL": str(inst.get("url", "")),
+            "SOURCE": str(inst.get("source", "")),
+            "FPS": fps,
+            "VARIATION_ID": variation_id,
+            "FRAME_START": frame_start,
+            "FRAME_END": frame_end,
+            "START": start,
+            "END": end,
+            "BBOX_X1": _coerce_float(bbox[0]) if has_bbox else None,
+            "BBOX_Y1": _coerce_float(bbox[1]) if has_bbox else None,
+            "BBOX_X2": _coerce_float(bbox[2]) if has_bbox else None,
+            "BBOX_Y2": _coerce_float(bbox[3]) if has_bbox else None,
+            "PERSON_DETECTED": has_bbox,
+        })
     return records
+
+
+def _resolve_rel_path(video_id: str, sample_id: str, video_dir: Optional[str]) -> str:
+    stem = video_id or sample_id
+    if video_dir:
+        return find_video_file(video_dir, stem).name
+    return f"{stem}.mp4"
+
+
+def _coerce_int(value: Any) -> Optional[int]:
+    try:
+        return int(value) if value not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_float(value: Any, default: Optional[float] = None) -> Optional[float]:
+    try:
+        return float(value) if value not in (None, "") else default
+    except (TypeError, ValueError):
+        return default
 
 
 def _resolve_timing(
@@ -102,17 +136,75 @@ def _resolve_timing(
     frame_start: Any,
     frame_end: Any,
     video_dir: Optional[str],
+    use_preprocessed_timing: bool,
 ) -> tuple:
-    if frame_start is not None and frame_end is not None and fps > 0:
-        try:
-            return float(frame_start) / fps, float(frame_end) / fps
-        except (TypeError, ValueError):
-            pass
+    clip_duration = _get_clip_duration(video_id, video_dir)
+    if use_preprocessed_timing:
+        if clip_duration > 0:
+            return 0.0, clip_duration
 
-    start = 0.0
-    end = 0.0
-    if video_id and video_dir:
-        video_path = os.path.join(video_dir, f"{video_id}.mp4")
-        if os.path.exists(video_path):
-            end = get_video_duration(video_path)
-    return start, end
+        clip_duration = _estimate_clip_duration(frame_start, frame_end, fps)
+        if clip_duration is not None:
+            return 0.0, clip_duration
+
+        return 0.0, 0.0
+
+    source_timing = _estimate_source_timing(frame_start, frame_end, fps)
+    if source_timing is not None:
+        return source_timing
+
+    if clip_duration > 0:
+        return 0.0, clip_duration
+
+    return 0.0, 0.0
+
+
+def _estimate_source_timing(
+    frame_start: Any,
+    frame_end: Any,
+    fps: float,
+) -> Optional[tuple[float, float]]:
+    if frame_start is None or frame_end is None or fps <= 0:
+        return None
+
+    try:
+        start = float(frame_start)
+        end = float(frame_end)
+    except (TypeError, ValueError):
+        return None
+
+    if start < 0 or end <= start:
+        return None
+
+    return start / fps, end / fps
+
+
+def _estimate_clip_duration(
+    frame_start: Any,
+    frame_end: Any,
+    fps: float,
+) -> Optional[float]:
+    if frame_start is None or frame_end is None or fps <= 0:
+        return None
+
+    try:
+        start = float(frame_start)
+        end = float(frame_end)
+    except (TypeError, ValueError):
+        return None
+
+    if start < 0 or end <= start:
+        return None
+
+    return (end - start) / fps
+
+
+def _get_clip_duration(video_id: str, video_dir: Optional[str]) -> float:
+    if not video_id or not video_dir:
+        return 0.0
+
+    video_path = find_video_file(video_dir, video_id)
+    if video_path.exists():
+        return get_video_duration(str(video_path))
+
+    return 0.0

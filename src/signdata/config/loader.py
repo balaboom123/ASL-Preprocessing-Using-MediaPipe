@@ -270,7 +270,7 @@ def resolve_paths(config: Config, project_root: Path) -> Config:
     for source_key in (
         "video_ids_file", "manifest_tsv", "manifest_csv",
         "release_dir", "class_map_file", "annotations_csv",
-        "annotations_dir", "metadata_json", "bbox_json",
+        "annotations_dir", "metadata_json", "annotation_json", "bbox_json",
         "corpus_file", "split_spec_file",
     ):
         val = source.get(source_key, "")
