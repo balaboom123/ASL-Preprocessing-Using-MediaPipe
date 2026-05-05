@@ -95,9 +95,11 @@ python -m signdata run configs/jobs/rwth_phoenix_weather/video.yaml \
 
 **Setup:**
 1. Request and download the dataset from [RWTH-PHOENIX-Weather](https://www-i6.informatik.rwth-aachen.de/~koller/RWTH-PHOENIX/)
-2. Unpack the archive. The release directory contains `PHOENIX-2014-T.{train,dev,test}.corpus.csv` and per-clip frame image directories.
-3. Set `dataset.source.release_dir` to the unpacked release path, either via CLI override or in YAML.
+2. Unpack the archive. The official release usually stores annotations under `annotations/manual/PHOENIX-2014-T.{train,dev,test}.corpus.csv` and frames under `features/fullFrame-210x260px/<split>/<clip>/`.
+3. Set `dataset.source.release_dir` to the unpacked release root, either via CLI override or in YAML.
 4. Set `paths.videos` to the directory where materialized `.mp4` files should be written.
+
+Repackaged layouts with top-level corpus CSVs and simpler relative frame paths are also accepted for compatibility, but the official release layout is the primary target.
 
 The shipped RWTH-PHOENIX-Weather configs default to `dataset.source.prepare_mode: materialize_missing` so a fresh unpacked release produces `.mp4` clips before manifest filtering.
 

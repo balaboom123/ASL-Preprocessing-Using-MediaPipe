@@ -48,6 +48,63 @@ def _normalise_frame_path(path_value: str) -> str:
     return str(path.parent) if any(char in path.name for char in "*?[]") else str(path)
 
 
+def _get_first_present_column(columns, *candidates: str) -> str | None:
+    """Return the first matching column name from *candidates*."""
+    return next((column for column in candidates if column in columns), None)
+
+
+def get_identifier_column(columns) -> str | None:
+    """Return the preferred PHOENIX clip identifier column."""
+    return _get_first_present_column(columns, "id", "name", "video")
+
+
+def get_frame_path_column(columns) -> str | None:
+    """Return the preferred PHOENIX frame-path column."""
+    return _get_first_present_column(columns, "folder", "video")
+
+
+def get_signer_column(columns) -> str | None:
+    """Return the preferred PHOENIX signer/speaker column."""
+    return _get_first_present_column(columns, "signer", "speaker")
+
+
+def _iter_release_anchors(csv_path: Path, release_dir: Path):
+    """Yield resolver anchors that stay confined to the configured release root."""
+    yield release_dir
+
+    for parent in csv_path.parents:
+        if parent == release_dir:
+            break
+        if parent.is_relative_to(release_dir):
+            yield parent
+
+
+def _resolve_frame_dir(
+    csv_path: Path,
+    release_dir: Path,
+    split: str,
+    path_value: str,
+) -> Path:
+    """Resolve a frame directory from either plan-style or official PHOENIX metadata."""
+    normalized = _normalise_frame_path(path_value).lstrip("/")
+    candidates: list[Path] = []
+
+    for anchor in _iter_release_anchors(csv_path, release_dir):
+        for base_dir in (
+            anchor,
+            anchor / split,
+            anchor / "features" / "fullFrame-210x260px",
+            anchor / "features" / "fullFrame-210x260px" / split,
+        ):
+            candidate = base_dir / normalized if normalized else base_dir
+            if candidate not in candidates:
+                candidates.append(candidate)
+            if candidate.is_dir():
+                return candidate
+
+    return candidates[0] if candidates else release_dir / normalized
+
+
 def prepare(
     source: RWTHPhoenixWeatherSourceConfig,
     config,
@@ -133,11 +190,11 @@ def _materialise_split(
 
     df.columns = [column.strip().lower() for column in df.columns]
 
-    id_col = "id" if "id" in df.columns else ("name" if "name" in df.columns else None)
-    folder_col = "folder" if "folder" in df.columns else None
+    id_col = get_identifier_column(df.columns)
+    folder_col = get_frame_path_column(df.columns)
 
     if id_col is None:
-        log.error("Corpus CSV %s has no 'id' or 'name' column — skipping.", csv_path)
+        log.error("Corpus CSV %s has no 'id', 'name', or 'video' column — skipping.", csv_path)
         return 0, 1, 0
 
     materialized = 0
@@ -150,7 +207,7 @@ def _materialise_split(
         raw_folder = raw_id
         if folder_col and pd.notna(row[folder_col]):
             raw_folder = str(row[folder_col])
-        frame_dir = release_dir / _normalise_frame_path(raw_folder).lstrip("/")
+        frame_dir = _resolve_frame_dir(csv_path, release_dir, split, raw_folder)
         output_path = video_dir / split / f"{clip_id}.mp4"
 
         if output_path.exists() and not overwrite:

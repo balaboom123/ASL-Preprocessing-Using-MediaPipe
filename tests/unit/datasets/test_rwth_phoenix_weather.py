@@ -35,6 +35,14 @@ def _write_corpus_csv(path, rows: list[dict]) -> None:
     path.write_text("".join(lines), encoding="utf-8")
 
 
+def _write_pipe_csv(path, header: list[str], rows: list[dict]) -> None:
+    """Write a pipe-delimited CSV with a custom header."""
+    lines = ["|".join(header) + "\n"]
+    for row in rows:
+        lines.append("|".join(str(row.get(column, "")) for column in header) + "\n")
+    path.write_text("".join(lines), encoding="utf-8")
+
+
 def _make_phoenix_release(tmp_path, splits=("train",), rows_per_split=2):
     """Build a minimal PHOENIX release directory structure."""
     release_dir = tmp_path / "PHOENIX-2014-T.v3.0" / "PHOENIX-2014-T"
@@ -53,6 +61,37 @@ def _make_phoenix_release(tmp_path, splits=("train",), rows_per_split=2):
         ]
         csv_path = release_dir / f"PHOENIX-2014-T.{split}.corpus.csv"
         _write_corpus_csv(csv_path, rows)
+
+    return release_dir
+
+
+def _make_official_style_release(tmp_path, splits=("train",), rows_per_split=2):
+    """Build a PHOENIX-like release with annotations/manual and features/fullFrame-210x260px."""
+    release_dir = tmp_path / "PHOENIX-2014-T-release3"
+    annotations_dir = release_dir / "annotations" / "manual"
+    features_dir = release_dir / "features" / "fullFrame-210x260px"
+    annotations_dir.mkdir(parents=True)
+    features_dir.mkdir(parents=True)
+
+    for split in splits:
+        rows = []
+        for index in range(rows_per_split):
+            clip_name = f"01April_2010_Thursday_clip-{index}"
+            rows.append({
+                "name": clip_name,
+                "video": f"{clip_name}/*.png",
+                "start": 0,
+                "end": 50 + index,
+                "speaker": f"Signer0{index % 3 + 1}",
+                "orth": "MORGEN REGEN STARK",
+                "translation": "tomorrow heavy rain",
+            })
+        csv_path = annotations_dir / f"PHOENIX-2014-T.{split}.corpus.csv"
+        _write_pipe_csv(
+            csv_path,
+            ["name", "video", "start", "end", "speaker", "orth", "translation"],
+            rows,
+        )
 
     return release_dir
 
@@ -317,6 +356,111 @@ class TestRWTHPhoenixWeatherDownload:
         assert stats["validated"] == 1
         assert calls == []
 
+    def test_materialize_mode_supports_official_release_layout(self, tmp_path, monkeypatch):
+        release_dir = _make_official_style_release(
+            tmp_path, splits=("train",), rows_per_split=1
+        )
+        frame_dir = (
+            release_dir
+            / "features"
+            / "fullFrame-210x260px"
+            / "train"
+            / "01April_2010_Thursday_clip-0"
+        )
+        frame_dir.mkdir(parents=True)
+        (frame_dir / "images0001.png").touch()
+
+        video_dir = tmp_path / "videos"
+        video_dir.mkdir()
+        manifest_path = tmp_path / "manifest.tsv"
+
+        calls = []
+
+        def fake_materialize(input_frame_dir, output_path, fps, overwrite):
+            calls.append((input_frame_dir, output_path, fps, overwrite))
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.touch()
+
+        monkeypatch.setattr(phoenix_source, "materialize_frames_to_video", fake_materialize)
+
+        cfg = _make_config(
+            release_dir,
+            video_dir,
+            manifest_path,
+            source_extra={"prepare_mode": "materialize_missing"},
+        )
+        adapter = RWTHPhoenixWeatherDataset()
+        context = PipelineContext(config=cfg, dataset=adapter)
+
+        context = adapter.download(cfg, context)
+
+        assert context.stats["dataset.download"]["materialized"] == 1
+        assert calls == [
+            (
+                frame_dir,
+                video_dir / "train" / "01April_2010_Thursday_clip-0.mp4",
+                25.0,
+                False,
+            ),
+        ]
+
+    def test_materialize_mode_does_not_escape_release_dir(self, tmp_path, monkeypatch):
+        release_root = tmp_path / "nested" / "PHOENIX-2014-T-release3"
+        annotations_dir = release_root / "annotations" / "manual"
+        annotations_dir.mkdir(parents=True)
+        _write_pipe_csv(
+            annotations_dir / "PHOENIX-2014-T.train.corpus.csv",
+            ["name", "video", "start", "end", "speaker", "orth", "translation"],
+            [{
+                "name": "01April_2010_Thursday_clip-0",
+                "video": "01April_2010_Thursday_clip-0/*.png",
+                "start": 0,
+                "end": 50,
+                "speaker": "Signer01",
+                "orth": "MORGEN REGEN STARK",
+                "translation": "tomorrow heavy rain",
+            }],
+        )
+
+        external_frame_dir = (
+            tmp_path
+            / "features"
+            / "fullFrame-210x260px"
+            / "train"
+            / "01April_2010_Thursday_clip-0"
+        )
+        external_frame_dir.mkdir(parents=True)
+        (external_frame_dir / "images0001.png").touch()
+
+        video_dir = tmp_path / "videos"
+        video_dir.mkdir()
+        manifest_path = tmp_path / "manifest.tsv"
+
+        calls = []
+
+        def fake_materialize(input_frame_dir, output_path, fps, overwrite):
+            calls.append((input_frame_dir, output_path, fps, overwrite))
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.touch()
+
+        monkeypatch.setattr(phoenix_source, "materialize_frames_to_video", fake_materialize)
+
+        cfg = _make_config(
+            release_root,
+            video_dir,
+            manifest_path,
+            source_extra={"prepare_mode": "materialize_missing"},
+        )
+        adapter = RWTHPhoenixWeatherDataset()
+        context = PipelineContext(config=cfg, dataset=adapter)
+
+        context = adapter.download(cfg, context)
+        stats = context.stats["dataset.download"]
+
+        assert stats["materialized"] == 0
+        assert stats["errors"] == 1
+        assert calls == []
+
 
 class TestLoadSplitDf:
     def test_basic_csv_parse(self, tmp_path):
@@ -380,6 +524,31 @@ class TestLoadSplitDf:
         assert df.iloc[0]["START"] == 0.0
         assert df.iloc[0]["END"] == 75.0
 
+    def test_official_columns_are_supported(self, tmp_path):
+        csv_path = tmp_path / "PHOENIX-2014-T.train.corpus.csv"
+        _write_pipe_csv(
+            csv_path,
+            ["name", "video", "start", "end", "speaker", "orth", "translation"],
+            [{
+                "name": "06October_2012_Saturday_tagesschau-8730",
+                "video": "06October_2012_Saturday_tagesschau-8730/*.png",
+                "start": 0,
+                "end": 75,
+                "speaker": "Signer08",
+                "orth": "MORGEN DEUTSCH LAND",
+                "translation": "morgen regen im sueden",
+            }],
+        )
+
+        df = phoenix_manifest._load_split_df(csv_path, "train", 25.0)
+
+        assert df is not None
+        assert df.iloc[0]["SAMPLE_ID"] == "06October_2012_Saturday_tagesschau-8730"
+        assert df.iloc[0]["REL_PATH"] == "train/06October_2012_Saturday_tagesschau-8730.mp4"
+        assert df.iloc[0]["SIGNER_ID"] == "Signer08"
+        assert df.iloc[0]["START"] == 0.0
+        assert df.iloc[0]["END"] == 75.0
+
     def test_corrupt_csv_returns_none(self, tmp_path):
         csv_path = tmp_path / "PHOENIX-2014-T.train.corpus.csv"
         csv_path.write_text("not|||valid\x00csv\xff", encoding="latin-1")
@@ -414,6 +583,34 @@ class TestRWTHPhoenixWeatherBuildManifest:
         assert set(context.manifest_df["SPLIT"]) == {"train", "dev", "test"}
         assert context.stats["dataset.manifest"]["segments"] == 6
         assert set(context.stats["dataset.manifest"]["splits"]) == {"train", "dev", "test"}
+
+    def test_build_manifest_supports_official_release_layout(self, tmp_path):
+        release_dir = _make_official_style_release(
+            tmp_path, splits=("train", "dev"), rows_per_split=1
+        )
+        video_dir = tmp_path / "videos"
+        (video_dir / "train").mkdir(parents=True)
+        (video_dir / "dev").mkdir(parents=True)
+        (video_dir / "train" / "01April_2010_Thursday_clip-0.mp4").touch()
+        (video_dir / "dev" / "01April_2010_Thursday_clip-0.mp4").touch()
+        manifest_path = tmp_path / "manifest.tsv"
+
+        cfg = _make_config(
+            release_dir,
+            video_dir,
+            manifest_path,
+            source_extra={"availability_policy": "mark_unavailable"},
+        )
+        context = self._make_context(cfg)
+        context = RWTHPhoenixWeatherDataset().build_manifest(cfg, context)
+
+        assert len(context.manifest_df) == 2
+        assert set(context.manifest_df["SPLIT"]) == {"train", "dev"}
+        assert set(context.manifest_df["SIGNER_ID"]) == {"Signer01"}
+        assert set(context.manifest_df["REL_PATH"]) == {
+            "train/01April_2010_Thursday_clip-0.mp4",
+            "dev/01April_2010_Thursday_clip-0.mp4",
+        }
 
     def test_build_manifest_single_split(self, tmp_path):
         release_dir = _make_phoenix_release(
