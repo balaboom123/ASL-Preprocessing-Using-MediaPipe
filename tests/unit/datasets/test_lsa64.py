@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from signdata.config.schema import Config
@@ -178,6 +179,8 @@ class TestLSA64ClassMap:
         assert int(first["CLASS_ID"]) == 1
         assert first["GLOSS"] == "Opaque"
         assert first["HANDEDNESS"] == "R"
+        none_row = class_map[class_map["CLASS_ID"] == 38].iloc[0]
+        assert none_row["GLOSS"] == "None"
 
     def test_allow_missing_class_map_returns_none(self, tmp_path, monkeypatch):
         missing_bundled = tmp_path / "missing.tsv"
@@ -236,6 +239,7 @@ class TestLSA64BuildManifest:
         assert list(df["GLOSS"]) == ["Opaque", "Red"]
         assert list(df["TEXT"]) == ["Opaque", "Red"]
         assert list(df["SPLIT"]) == ["all", "all"]
+        assert list(df["SOURCE_VARIANT"]) == ["cut", "cut"]
         assert list(df["SIGNER_ID"]) == [1, 9]
         assert list(df["REPETITION_ID"]) == [1, 5]
         assert list(df["FPS"]) == [60.0, 60.0]
@@ -280,3 +284,38 @@ class TestLSA64BuildManifest:
         df = context.manifest_df
         assert list(df["VIDEO_ID"]) == ["01_09_01"]
         assert list(df["SPLIT"]) == ["val"]
+
+
+class TestLSA64LoadedManifestValidation:
+    def test_accepts_legacy_manifest_when_sample_ids_match_variant(self, tmp_path):
+        cfg = _make_config(
+            tmp_path / "release",
+            tmp_path / "manifest.tsv",
+            source={"variant": "cut"},
+        )
+        context = PipelineContext(config=cfg, dataset=LSA64Dataset())
+        context.manifest_path = tmp_path / "manifest.tsv"
+        context.manifest_df = pd.DataFrame({
+            "SAMPLE_ID": ["cut-01_01_01"],
+            "VIDEO_ID": ["01_01_01"],
+            "REL_PATH": ["01_01_01.mp4"],
+        })
+
+        LSA64Dataset().validate_loaded_manifest(cfg, context)
+
+    def test_rejects_loaded_manifest_when_variant_differs(self, tmp_path):
+        cfg = _make_config(
+            tmp_path / "release",
+            tmp_path / "manifest.tsv",
+            source={"variant": "raw"},
+        )
+        context = PipelineContext(config=cfg, dataset=LSA64Dataset())
+        context.manifest_path = tmp_path / "manifest.tsv"
+        context.manifest_df = pd.DataFrame({
+            "SAMPLE_ID": ["cut-01_01_01"],
+            "VIDEO_ID": ["01_01_01"],
+            "REL_PATH": ["01_01_01.mp4"],
+        })
+
+        with pytest.raises(ValueError, match="variant"):
+            LSA64Dataset().validate_loaded_manifest(cfg, context)

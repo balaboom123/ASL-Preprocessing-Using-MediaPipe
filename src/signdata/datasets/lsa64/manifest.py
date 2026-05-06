@@ -57,6 +57,7 @@ def build(config, source: LSA64SourceConfig, log: logging.Logger) -> pd.DataFram
             "SAMPLE_ID": f"{source.variant}-{stem}",
             "VIDEO_ID": stem,
             "REL_PATH": mp4.name,
+            "SOURCE_VARIANT": source.variant,
             "CLASS_ID": class_id,
             "SIGNER_ID": signer_id,
             "REPETITION_ID": repetition_id,
@@ -112,6 +113,7 @@ def build(config, source: LSA64SourceConfig, log: logging.Logger) -> pd.DataFram
 
     canonical_columns = [
         "SAMPLE_ID", "VIDEO_ID", "REL_PATH", "SPLIT",
+        "SOURCE_VARIANT",
         "START", "END", "CLASS_ID", "GLOSS", "TEXT",
         "SIGNER_ID", "FPS", "REPETITION_ID", "HANDEDNESS",
     ]

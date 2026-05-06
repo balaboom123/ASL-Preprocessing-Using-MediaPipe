@@ -81,6 +81,69 @@ def resolve_video_dir(config, source: LSA64SourceConfig) -> Optional[Path]:
     return release_dir
 
 
+def infer_manifest_variant(df: pd.DataFrame) -> Optional[str]:
+    """Infer which LSA64 variant an existing manifest was built from."""
+    if "SOURCE_VARIANT" in df.columns:
+        variants = {
+            str(value).strip().lower()
+            for value in df["SOURCE_VARIANT"].dropna().unique().tolist()
+            if str(value).strip()
+        }
+        unknown = variants - _KNOWN_VARIANTS
+        if unknown:
+            raise ValueError(
+                f"LSA64 manifest has unsupported SOURCE_VARIANT values: "
+                f"{sorted(unknown)}"
+            )
+        if len(variants) > 1:
+            raise ValueError(
+                f"LSA64 manifest has mixed SOURCE_VARIANT values: "
+                f"{sorted(variants)}"
+            )
+        if variants:
+            return next(iter(variants))
+
+    if "SAMPLE_ID" in df.columns:
+        variants = {
+            str(sample_id).split("-", 1)[0].strip().lower()
+            for sample_id in df["SAMPLE_ID"].dropna().tolist()
+            if str(sample_id).strip()
+            and str(sample_id).split("-", 1)[0].strip().lower() in _KNOWN_VARIANTS
+        }
+        if len(variants) > 1:
+            raise ValueError(
+                f"LSA64 manifest has mixed SAMPLE_ID variant prefixes: "
+                f"{sorted(variants)}"
+            )
+        if variants:
+            return next(iter(variants))
+
+    return None
+
+
+def validate_loaded_manifest_variant(
+    df: pd.DataFrame,
+    manifest_path: Path | None,
+    source: LSA64SourceConfig,
+) -> None:
+    """Reject reused manifests that were built for a different variant."""
+    manifest_variant = infer_manifest_variant(df)
+    if manifest_variant is None:
+        raise ValueError(
+            f"Cannot verify the source variant for existing LSA64 manifest "
+            f"{manifest_path or '<unknown>'}. Expected SOURCE_VARIANT or "
+            f"SAMPLE_ID values prefixed with 'raw-' or 'cut-'. Regenerate "
+            f"the manifest with dataset.manifest=true."
+        )
+    if manifest_variant != source.variant:
+        raise ValueError(
+            f"Existing LSA64 manifest {manifest_path or '<unknown>'} was built "
+            f"for variant={manifest_variant!r}, but current config requests "
+            f"variant={source.variant!r}. Regenerate the manifest or use a "
+            f"manifest built for the matching variant."
+        )
+
+
 def validate_release(
     source: LSA64SourceConfig,
     video_dir: Optional[Path],

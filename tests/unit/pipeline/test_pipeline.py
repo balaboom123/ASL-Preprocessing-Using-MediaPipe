@@ -9,6 +9,7 @@ import signdata.datasets  # noqa: F401 – trigger registrations
 
 from signdata.config.schema import Config
 from signdata.datasets.lsa64 import LSA64Dataset
+from signdata.datasets.lsa64 import manifest as lsa64_manifest
 from signdata.datasets.youtube_asl import YouTubeASLDataset
 from signdata.pipeline.context import PipelineContext
 from signdata.pipeline.runner import PipelineRunner
@@ -196,6 +197,62 @@ class TestPipelineRunnerOrchestration:
 
         mock_manifest.assert_not_called()
         assert "dataset.manifest" not in context.completed_stages
+
+    def test_reused_lsa64_manifest_rejects_variant_mismatch(self, tmp_path, monkeypatch):
+        release_root = tmp_path / "lsa64"
+        raw_dir = release_root / "raw"
+        cut_dir = release_root / "cut"
+        raw_dir.mkdir(parents=True)
+        cut_dir.mkdir(parents=True)
+        (raw_dir / "01_01_01.mp4").touch()
+        (cut_dir / "01_01_01.mp4").touch()
+
+        manifest_path = tmp_path / "manifest.tsv"
+        monkeypatch.setattr(lsa64_manifest, "get_video_duration", lambda _: 1.0)
+        monkeypatch.setattr(lsa64_manifest, "get_video_fps", lambda _: 60.0)
+
+        build_cfg = Config(
+            dataset={
+                "name": "lsa64",
+                "download": False,
+                "manifest": True,
+                "source": {
+                    "release_dir": str(release_root),
+                    "variant": "cut",
+                    "allow_missing_class_map": True,
+                },
+            },
+            processing={"enabled": False},
+            post_processing={"enabled": False},
+            output={"enabled": False},
+            paths={
+                "videos": str(release_root),
+                "manifest": str(manifest_path),
+            },
+        )
+        LSA64Dataset().build_manifest(build_cfg, PipelineContext(build_cfg, LSA64Dataset()))
+
+        reuse_cfg = Config(
+            dataset={
+                "name": "lsa64",
+                "download": False,
+                "manifest": False,
+                "source": {
+                    "release_dir": str(release_root),
+                    "variant": "raw",
+                },
+            },
+            processing={"enabled": False},
+            post_processing={"enabled": False},
+            output={"enabled": False},
+            paths={
+                "videos": str(release_root),
+                "manifest": str(manifest_path),
+            },
+        )
+
+        with pytest.raises(ValueError, match="variant"):
+            PipelineRunner(reuse_cfg).run()
 
     @patch.object(YouTubeASLDataset, "download")
     def test_processing_stage(self, mock_download):

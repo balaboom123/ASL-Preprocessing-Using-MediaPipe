@@ -415,6 +415,21 @@ class TestLoadConfig:
         assert cfg.processing.processor == "video2crop"
         assert cfg.processing.detection == "yolo"
 
+    def test_load_lsa64_requires_explicit_release_dir_or_paths_videos(self, tmp_path):
+        import signdata.datasets
+
+        yaml_path = tmp_path / "configs" / "jobs" / "lsa64.yaml"
+        yaml_path.parent.mkdir(parents=True)
+        yaml_path.write_text(yaml.dump({
+            "dataset": {"name": "lsa64"},
+            "processing": {"enabled": False},
+            "post_processing": {"enabled": False},
+            "output": {"enabled": False},
+        }))
+
+        with pytest.raises(ValueError, match="release_dir|paths\\.videos"):
+            load_config(str(yaml_path))
+
     def test_cli_overrides_apply(self, project_root):
         import signdata.datasets
         import signdata.processors

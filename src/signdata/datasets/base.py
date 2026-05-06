@@ -73,6 +73,14 @@ class DatasetAdapter(ABC):
         videos = getattr(config.paths, "videos", "")
         return Path(videos) if videos else None
 
+    def validate_loaded_manifest(
+        self,
+        config: "Config",
+        context: "PipelineContext",
+    ) -> None:
+        """Validate a reused manifest before downstream stages run."""
+        return None
+
 
 # Backward-compat alias
 BaseDataset = DatasetAdapter

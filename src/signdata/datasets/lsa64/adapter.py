@@ -16,14 +16,13 @@ class LSA64Dataset(DatasetAdapter):
 
     @classmethod
     def validate_config(cls, config) -> None:
-        source = config.dataset.source
-        release_dir = source.get("release_dir", "") or getattr(config.paths, "videos", "")
-        if not release_dir:
+        source = cls().get_source_config(config)
+        if _source.resolve_release_dir(config, source) is None:
             raise ValueError(
                 "lsa64 requires dataset.source.release_dir or paths.videos "
                 "pointing to the local LSA64 release directory."
             )
-        _source.validate_variant_path_consistency(config, _source.get_source_config(config))
+        _source.validate_variant_path_consistency(config, source)
 
     def get_source_config(self, config) -> _source.LSA64SourceConfig:
         return _source.get_source_config(config)
@@ -63,3 +62,13 @@ class LSA64Dataset(DatasetAdapter):
             config.paths.manifest,
         )
         return context
+
+    def validate_loaded_manifest(self, config, context) -> None:
+        if context.manifest_df is None:
+            return
+        source = self.get_source_config(config)
+        _source.validate_loaded_manifest_variant(
+            context.manifest_df,
+            context.manifest_path,
+            source,
+        )
