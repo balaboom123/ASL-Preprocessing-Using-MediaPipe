@@ -16,17 +16,38 @@ class LSA64Dataset(DatasetAdapter):
 
     @classmethod
     def validate_config(cls, config) -> None:
-        pass
+        source = config.dataset.source
+        release_dir = source.get("release_dir", "") or getattr(config.paths, "videos", "")
+        if not release_dir:
+            raise ValueError(
+                "lsa64 requires dataset.source.release_dir or paths.videos "
+                "pointing to the local LSA64 release directory."
+            )
+        _source.validate_variant_path_consistency(config, _source.get_source_config(config))
+
+    def get_source_config(self, config) -> _source.LSA64SourceConfig:
+        return _source.get_source_config(config)
+
+    def resolve_videos_dir(self, config) -> Path | None:
+        source = self.get_source_config(config)
+        return _source.resolve_video_dir(config, source)
+
+    @staticmethod
+    def _sync_video_dir(context, video_dir: Path | None) -> None:
+        context.videos_dir = video_dir
 
     def download(self, config, context):
-        source = _source.get_source_config(config)
-        video_dir = _source.resolve_video_dir(config, source)
+        source = self.get_source_config(config)
+        video_dir = self.resolve_videos_dir(config)
         stats = _source.validate_release(source, video_dir, self.logger)
+        self._sync_video_dir(context, video_dir)
         context.stats["dataset.download"] = stats
         return context
 
     def build_manifest(self, config, context):
-        source = _source.get_source_config(config)
+        source = self.get_source_config(config)
+        video_dir = self.resolve_videos_dir(config)
+        self._sync_video_dir(context, video_dir)
         df = _manifest.build(config, source, self.logger)
         context.manifest_path = Path(config.paths.manifest)
         context.manifest_df = df

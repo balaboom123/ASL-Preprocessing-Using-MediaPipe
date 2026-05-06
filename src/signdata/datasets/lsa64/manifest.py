@@ -3,7 +3,6 @@
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
@@ -17,13 +16,13 @@ def build(config, source: LSA64SourceConfig, log: logging.Logger) -> pd.DataFram
     """Discover .mp4 files, parse filenames, join class map, write TSV manifest."""
     video_dir = resolve_video_dir(config, source)
 
-    if not video_dir or not Path(video_dir).exists():
+    if not video_dir or not video_dir.exists():
         raise FileNotFoundError(
             f"LSA64 video directory not found: {video_dir!r}. "
             f"Run the download stage first or set release_dir / paths.videos."
         )
 
-    mp4_files = sorted(Path(video_dir).glob("*.mp4"))
+    mp4_files = sorted(video_dir.glob("*.mp4"))
     if not mp4_files:
         raise FileNotFoundError(f"No .mp4 files found in: {video_dir}")
 

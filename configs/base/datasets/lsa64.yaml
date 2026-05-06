@@ -1,0 +1,10 @@
+dataset:
+  name: lsa64
+  download: true
+  manifest: true
+  source:
+    release_dir: dataset/lsa64
+    variant: cut
+    split: all
+    split_strategy: none
+    availability_policy: fail_fast

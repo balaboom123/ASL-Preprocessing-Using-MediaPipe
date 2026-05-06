@@ -8,6 +8,7 @@ import pytest
 import signdata.datasets  # noqa: F401 – trigger registrations
 
 from signdata.config.schema import Config
+from signdata.datasets.lsa64 import LSA64Dataset
 from signdata.datasets.youtube_asl import YouTubeASLDataset
 from signdata.pipeline.context import PipelineContext
 from signdata.pipeline.runner import PipelineRunner
@@ -57,6 +58,35 @@ class TestPipelineContext:
         assert ctx.webdataset_dir == Path(str(tmp_path / "webdataset")) / "exp1"
         assert ctx.videos_dir == tmp_path / "videos"
         assert ctx.manifest_path == tmp_path / "manifest.csv"
+
+    def test_resolve_paths_uses_dataset_specific_video_dir(self, tmp_path):
+        release_root = tmp_path / "lsa64"
+        raw_dir = release_root / "raw"
+        cut_dir = release_root / "cut"
+        raw_dir.mkdir(parents=True)
+        cut_dir.mkdir(parents=True)
+
+        cfg = Config(
+            dataset={
+                "name": "lsa64",
+                "source": {
+                    "release_dir": str(release_root),
+                    "variant": "raw",
+                },
+            },
+            run_name="exp1",
+            paths={
+                "root": str(tmp_path),
+                "videos": str(release_root),
+                "manifest": str(tmp_path / "manifest.tsv"),
+                "output": str(tmp_path / "output"),
+                "webdataset": str(tmp_path / "webdataset"),
+            },
+        )
+        ctx = PipelineContext(config=cfg, dataset=LSA64Dataset())
+        ctx.resolve_paths()
+
+        assert ctx.videos_dir == raw_dir
 
     def test_load_manifest(self, tmp_path):
         manifest_path = tmp_path / "manifest.csv"

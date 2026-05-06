@@ -376,6 +376,45 @@ class TestLoadConfig:
         assert cfg.processing.processor == "video2crop"
         assert cfg.processing.detection == "yolo"
 
+    def test_load_lsa64_pose_mediapipe(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "lsa64" / "mediapipe.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "lsa64"
+        assert cfg.dataset.source["release_dir"] == str(
+            project_root / "dataset" / "lsa64"
+        )
+        assert cfg.dataset.source["variant"] == "cut"
+        assert cfg.dataset.source["split_strategy"] == "none"
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.pose == "mediapipe"
+
+    def test_load_lsa64_pose_mmpose(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "lsa64" / "mmpose.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "lsa64"
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.detection == "mmdet"
+        assert cfg.processing.pose == "mmpose"
+
+    def test_load_lsa64_video_yolo(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "lsa64" / "video.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "lsa64"
+        assert cfg.processing.processor == "video2crop"
+        assert cfg.processing.detection == "yolo"
+
     def test_cli_overrides_apply(self, project_root):
         import signdata.datasets
         import signdata.processors

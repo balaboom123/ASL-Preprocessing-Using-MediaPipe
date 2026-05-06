@@ -10,6 +10,7 @@ Adapters never do experiment processing (pose extraction, normalization, etc.).
 
 import logging
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
 from pydantic import BaseModel
@@ -66,6 +67,11 @@ class DatasetAdapter(ABC):
         Override in subclasses to return a dataset-specific model.
         """
         return BaseModel()
+
+    def resolve_videos_dir(self, config: "Config") -> Path | None:
+        """Resolve the directory processors should treat as the video root."""
+        videos = getattr(config.paths, "videos", "")
+        return Path(videos) if videos else None
 
 
 # Backward-compat alias

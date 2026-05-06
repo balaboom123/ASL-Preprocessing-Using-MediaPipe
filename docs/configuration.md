@@ -130,6 +130,8 @@ If omitted, the loader derives these defaults from `paths.root`:
 | `video_ids_file` | `str` | `""` | Video ID list for YouTube-style datasets |
 | `annotations_dir` | `str` | `""` | Directory containing MS-ASL JSON annotation files |
 | `metadata_json` | `str` | `""` | Canonical WLASL metadata JSON path (`annotation_json` is accepted as a compatibility alias) |
+| `release_dir` | `str` | `""` | Local dataset release root for manually downloaded datasets such as LSA64, CSL, and RWTH-PHOENIX-Weather |
+| `variant` | `str` | adapter defaults | Dataset release variant such as `cut`, `raw`, or corpus-specific release names |
 | `languages` | `list[str]` | adapter defaults | Transcript language codes |
 | `availability_policy` | `str` | `"drop_unavailable"` | Availability handling policy for datasets that may have missing clips |
 | `download_mode` | `str` | adapter defaults | Dataset acquisition mode such as `validate` or `download_missing`; WLASL uses `validate` for local preprocessed clips and `download_missing` for raw-source URL fetches |
@@ -144,11 +146,16 @@ If omitted, the loader derives these defaults from `paths.root`:
 | `max_duration` | `float` | `60.0` | Max segment duration |
 | `manifest_csv` | `str` | `""` | Existing manifest path for datasets such as How2Sign |
 | `split` | `str` | `"all"` | Split label for datasets such as How2Sign, WLASL, and MS-ASL |
+| `split_strategy` | `str` | adapter defaults | Split assignment policy for datasets such as LSA64 and CSL |
 | `subset` | `int` | `0` | Optional class-count subset for datasets such as WLASL and MS-ASL |
+| `train_signers` / `val_signers` / `test_signers` | `list[int]` | adapter defaults | Explicit signer groups for signer-based datasets such as LSA64 |
+| `class_map_file` | `str` | `""` | Optional class-id to gloss mapping TSV; LSA64 and SLoVo can use bundled defaults |
+| `allow_missing_class_map` | `bool` | `false` | Allow manifest generation without class labels when a class map is unavailable |
 | `text_processing` | `dict` | adapter defaults | Text cleanup options for transcript-derived manifests |
 
 Relative file paths in `dataset.source`, such as `video_ids_file`, `manifest_csv`,
-`annotations_dir`, `metadata_json`, and `annotation_json`, are resolved from the project root.
+`annotations_dir`, `metadata_json`, `annotation_json`, `release_dir`, and `class_map_file`,
+are resolved from the project root.
 
 ## `processing`
 
