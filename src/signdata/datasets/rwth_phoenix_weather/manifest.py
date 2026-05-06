@@ -13,7 +13,11 @@ from .source import (
     RWTHPhoenixWeatherSourceConfig,
     derive_clip_id,
     find_corpus_csvs,
+    get_identifier_column,
+    get_signer_column,
 )
+
+_log = logging.getLogger(__name__)
 
 
 def build(
@@ -77,9 +81,6 @@ def _load_split_df(
     video_fps: float,
 ) -> Optional[pd.DataFrame]:
     """Parse a single corpus CSV and return a canonical DataFrame."""
-    import logging as _logging
-    _log = _logging.getLogger(__name__)
-
     try:
         raw = pd.read_csv(csv_path, delimiter="|")
     except Exception as exc:
@@ -87,10 +88,12 @@ def _load_split_df(
         return None
 
     raw.columns = [c.strip().lower() for c in raw.columns]
-    id_col = "id" if "id" in raw.columns else ("name" if "name" in raw.columns else None)
+    id_col = get_identifier_column(raw.columns)
     if id_col is None:
-        _log.error("Corpus CSV %s has no 'id' or 'name' column — skipping.", csv_path)
+        _log.error("Corpus CSV %s has no 'id', 'name', or 'video' column — skipping.", csv_path)
         return None
+
+    signer_col = get_signer_column(raw.columns)
 
     rows = []
     for _, row in raw.iterrows():
@@ -108,8 +111,8 @@ def _load_split_df(
             entry["GLOSS"] = str(row["orth"]).strip()
         if "translation" in raw.columns and pd.notna(row["translation"]):
             entry["TEXT"] = str(row["translation"]).strip()
-        if "signer" in raw.columns and pd.notna(row["signer"]):
-            entry["SIGNER_ID"] = str(row["signer"]).strip()
+        if signer_col and pd.notna(row[signer_col]):
+            entry["SIGNER_ID"] = str(row[signer_col]).strip()
 
         try:
             start_val = float(row["start"]) if "start" in raw.columns else None

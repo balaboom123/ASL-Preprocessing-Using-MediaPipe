@@ -1,0 +1,10 @@
+dataset:
+  name: rwth_phoenix_weather
+  download: true
+  manifest: true
+  source:
+    release_dir: ""
+    split: all
+    prepare_mode: materialize_missing
+    availability_policy: drop_unavailable
+    video_fps: 25.0
