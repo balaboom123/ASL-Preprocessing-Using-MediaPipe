@@ -1,0 +1,10 @@
+dataset:
+  name: msasl
+  download: true
+  manifest: true
+  source:
+    annotations_dir: dataset/msasl/annotations
+    download_mode: validate
+    split: all
+    subset: 1000
+    availability_policy: drop_unavailable

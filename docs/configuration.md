@@ -62,6 +62,10 @@ configs/
 │   ├── baseline_youtube_asl.yaml
 │   └── privacy_aware_slt.yaml
 └── jobs/
+    ├── msasl/
+    │   ├── mediapipe.yaml
+    │   ├── mmpose.yaml
+    │   └── video.yaml
     ├── youtube_asl/
     │   ├── mediapipe.yaml
     │   ├── mmpose.yaml
@@ -124,6 +128,7 @@ If omitted, the loader derives these defaults from `paths.root`:
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `video_ids_file` | `str` | `""` | Video ID list for YouTube-style datasets |
+| `annotations_dir` | `str` | `""` | Directory containing MS-ASL JSON annotation files |
 | `metadata_json` | `str` | `""` | Canonical WLASL metadata JSON path (`annotation_json` is accepted as a compatibility alias) |
 | `languages` | `list[str]` | adapter defaults | Transcript language codes |
 | `availability_policy` | `str` | `"drop_unavailable"` | Availability handling policy for datasets that may have missing clips |
@@ -138,12 +143,12 @@ If omitted, the loader derives these defaults from `paths.root`:
 | `min_duration` | `float` | `0.2` | Min segment duration |
 | `max_duration` | `float` | `60.0` | Max segment duration |
 | `manifest_csv` | `str` | `""` | Existing manifest path for datasets such as How2Sign |
-| `split` | `str` | `"all"` | Split label for datasets such as How2Sign and WLASL |
-| `subset` | `int` | `0` | Optional class-count subset for datasets such as WLASL |
+| `split` | `str` | `"all"` | Split label for datasets such as How2Sign, WLASL, and MS-ASL |
+| `subset` | `int` | `0` | Optional class-count subset for datasets such as WLASL and MS-ASL |
 | `text_processing` | `dict` | adapter defaults | Text cleanup options for transcript-derived manifests |
 
 Relative file paths in `dataset.source`, such as `video_ids_file`, `manifest_csv`,
-`metadata_json`, and `annotation_json`, are resolved from the project root.
+`annotations_dir`, `metadata_json`, and `annotation_json`, are resolved from the project root.
 
 ## `processing`
 

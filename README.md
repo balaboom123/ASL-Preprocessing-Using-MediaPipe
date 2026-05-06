@@ -30,6 +30,8 @@ Supports multiple extractors including **MediaPipe Holistic**, **MMPose**, **MMD
 |:--------|:------|:------------|:--------|
 | **[YouTube-ASL](docs/datasets.md#youtube-asl)** | NeurIPS 2023 | 11,000+ videos, 73,000+ segments -- open-domain ASL-English parallel corpus | [Apache-2.0](https://github.com/google-research/google-research/tree/master/youtube_asl) |
 | **[How2Sign](docs/datasets.md#how2sign)** | CVPR 2021 | 80+ hours of instructional ASL in a controlled studio environment | [CC BY-NC 4.0](https://how2sign.github.io/) |
+| **[WLASL](docs/datasets.md#wlasl)** | WACV 2020 | 12,000+ isolated sign clips across 2,000 ASL glosses | [Dataset site](https://dxli94.github.io/WLASL/) |
+| **[MS-ASL](docs/datasets.md#ms-asl)** | CVPR 2019 | Large-scale isolated ASL dataset with signer-diverse lexical clips | [Microsoft Download Center terms](https://www.microsoft.com/en-us/download/details.aspx?id=100121) |
 
 For paper-aligned preprocessing methodology, see [Research-Aligned Preprocessing](docs/research-preprocessing.md).
 
@@ -60,6 +62,9 @@ python -m signdata run configs/jobs/youtube_asl/mediapipe.yaml
 # How2Sign: extract MMPose landmarks (CUDA required)
 python -m signdata run configs/jobs/how2sign/mmpose.yaml
 
+# MS-ASL: validate local clips, extract MediaPipe landmarks, normalize, package
+python -m signdata run configs/jobs/msasl/mediapipe.yaml
+
 # Override config values from the command line
 python -m signdata run configs/jobs/youtube_asl/mediapipe.yaml \
   --override processing.max_workers=8 stop_at=extract
@@ -75,7 +80,7 @@ Both modes produce [WebDataset](https://github.com/webdataset/webdataset) tar sh
 - [Architecture](docs/architecture.md) -- system design, registry, pipeline flow
 - [Configuration](docs/configuration.md) -- job/experiment layout and CLI overrides
 - [Pipeline Stages](docs/pipeline-stages.md) -- recipe stages and optional stages
-- [Datasets](docs/datasets.md) -- YouTube-ASL, How2Sign, and WLASL setup
+- [Datasets](docs/datasets.md) -- YouTube-ASL, How2Sign, WLASL, and MS-ASL setup
 - [Contributing](CONTRIBUTING.md) -- required dataset package structure and extension guide
 - [Research-Aligned Preprocessing](docs/research-preprocessing.md) -- paper-aligned preprocessing notes
 

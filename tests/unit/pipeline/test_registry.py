@@ -71,7 +71,8 @@ class TestRealRegistrations:
         assert "how2sign" in DATASET_REGISTRY
         assert "openasl" in DATASET_REGISTRY
         assert "wlasl" in DATASET_REGISTRY
-        assert len(DATASET_REGISTRY) >= 4
+        assert "msasl" in DATASET_REGISTRY
+        assert len(DATASET_REGISTRY) >= 5
 
     def test_processors_registered(self):
         import signdata.processors  # noqa: F401
