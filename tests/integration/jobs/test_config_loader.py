@@ -209,6 +209,19 @@ class TestResolvePaths:
         cfg = resolve_paths(cfg, project_root)
         assert cfg.dataset.source.get("video_ids_file", "") == ""
 
+    def test_annotations_dir_relative_resolved(self):
+        cfg = Config(
+            dataset={
+                "name": "test",
+                "source": {"annotations_dir": "dataset/msasl/annotations"},
+            },
+        )
+        project_root = Path("/proj")
+        cfg = resolve_paths(cfg, project_root)
+        assert cfg.dataset.source["annotations_dir"] == str(
+            project_root / "dataset" / "msasl" / "annotations"
+        )
+
     def test_detection_model_paths_resolved(self):
         """processing.detection_config model paths resolve relative to project root."""
         cfg = Config(
@@ -335,6 +348,31 @@ class TestLoadConfig:
 
         cfg = load_config(yaml_path)
         assert cfg.dataset.name == "youtube_asl"
+        assert cfg.processing.processor == "video2crop"
+        assert cfg.processing.detection == "yolo"
+
+    def test_load_msasl_pose_mediapipe(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "msasl" / "mediapipe.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "msasl"
+        assert cfg.dataset.source["annotations_dir"] == str(
+            project_root / "dataset" / "msasl" / "annotations"
+        )
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.pose == "mediapipe"
+
+    def test_load_msasl_video_yolo(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "msasl" / "video.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "msasl"
         assert cfg.processing.processor == "video2crop"
         assert cfg.processing.detection == "yolo"
 

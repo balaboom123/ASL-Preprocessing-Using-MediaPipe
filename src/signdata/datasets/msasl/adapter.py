@@ -24,24 +24,22 @@ class MSASLDataset(DatasetAdapter):
                 "MSASL_test.json, and MSASL_classes.json"
             )
 
+    def get_source_config(self, config) -> _source.MSASLSourceConfig:
+        return _source.get_source_config(config)
+
     def download(self, config, context):
-        source = _source.get_source_config(config)
+        source = self.get_source_config(config)
 
         if source.download_mode == "validate":
             stats = _source.validate(source, config, self.logger)
-        elif source.download_mode == "download_missing":
-            stats = _source.download_missing(source, config, self.logger)
         else:
-            raise ValueError(
-                f"Unknown download_mode '{source.download_mode}'. "
-                "Expected 'validate' or 'download_missing'."
-            )
+            stats = _source.download_missing(source, config, self.logger)
 
         context.stats["dataset.download"] = stats
         return context
 
     def build_manifest(self, config, context):
-        source = _source.get_source_config(config)
+        source = self.get_source_config(config)
         df = _manifest.build(config, source, self.logger)
         context.manifest_path = Path(config.paths.manifest)
         context.manifest_df = df

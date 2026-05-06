@@ -55,6 +55,12 @@ class TestGetExistingVideoIds:
     def test_empty_directory(self, tmp_path):
         assert get_existing_video_ids(str(tmp_path)) == set()
 
+    def test_recursive_nested_directory(self, tmp_path):
+        nested = tmp_path / "class0"
+        nested.mkdir()
+        (nested / "v1.mp4").touch()
+        assert get_existing_video_ids(str(tmp_path), recursive=True) == {"v1"}
+
 
 # ── apply_availability_policy ──────────────────────────────────────────
 

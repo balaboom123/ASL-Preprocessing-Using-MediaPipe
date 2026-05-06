@@ -14,9 +14,8 @@ Policies:
 import json
 import logging
 import os
-from glob import glob
 from pathlib import Path
-from typing import Dict, List, Set, Union
+from typing import Dict, Iterable, List, Set, Union
 
 import pandas as pd
 
@@ -29,12 +28,18 @@ logger = logging.getLogger(__name__)
 _VIDEO_EXTENSIONS = ("mp4", "webm", "mkv", "avi", "mov")
 
 
-def get_existing_video_ids(directory: str) -> Set[str]:
+def _iter_video_files(directory: Union[str, Path], recursive: bool) -> Iterable[Path]:
+    base_dir = Path(directory)
+    for ext in _VIDEO_EXTENSIONS:
+        pattern = f"**/*.{ext}" if recursive else f"*.{ext}"
+        yield from base_dir.glob(pattern)
+
+
+def get_existing_video_ids(directory: str, recursive: bool = False) -> Set[str]:
     """Return set of stem IDs from video files with any common extension."""
     ids: Set[str] = set()
-    for ext in _VIDEO_EXTENSIONS:
-        for f in glob(os.path.join(directory, f"*.{ext}")):
-            ids.add(Path(f).stem)
+    for path in _iter_video_files(directory, recursive):
+        ids.add(path.stem)
     return ids
 
 
