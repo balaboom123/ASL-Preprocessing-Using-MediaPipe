@@ -300,29 +300,6 @@ def resolve_paths(config: Config, project_root: Path) -> Config:
     return config
 
 
-def _validate_dataset_raw_inputs(dataset_name: str, raw: Dict[str, Any]) -> None:
-    """Run dataset checks that depend on user-provided YAML before defaults."""
-    if dataset_name != "lsa64":
-        return
-
-    dataset_cfg = raw.get("dataset")
-    dataset_dict = dataset_cfg if isinstance(dataset_cfg, dict) else {}
-    source = dataset_dict.get("source")
-    source_dict = source if isinstance(source, dict) else {}
-    paths = raw.get("paths")
-    paths_dict = paths if isinstance(paths, dict) else {}
-
-    release_dir = str(source_dict.get("release_dir", "") or "").strip()
-    videos_dir = str(paths_dict.get("videos", "") or "").strip()
-    if release_dir or videos_dir:
-        return
-
-    raise ValueError(
-        "lsa64 requires an explicit dataset.source.release_dir or paths.videos "
-        "pointing to the local LSA64 release directory."
-    )
-
-
 def load_config(
     yaml_path: str,
     overrides: Optional[List[str]] = None,
@@ -384,7 +361,7 @@ def load_config(
             f"Available: {list(DATASET_REGISTRY.keys())}"
         )
 
-    _validate_dataset_raw_inputs(dataset_name, raw)
+    DATASET_REGISTRY[dataset_name].validate_raw_inputs(raw)
 
     config = Config(**raw)
     config = resolve_paths(config, project_root)

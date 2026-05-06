@@ -11,7 +11,7 @@ Adapters never do experiment processing (pose extraction, normalization, etc.).
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, TYPE_CHECKING
 
 from pydantic import BaseModel
 
@@ -32,6 +32,15 @@ class DatasetAdapter(ABC):
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(f"signdata.dataset.{self.name}")
+
+    @classmethod
+    def validate_raw_inputs(cls, raw: Dict[str, Any]) -> None:
+        """Validate user-provided raw YAML before defaults are applied.
+
+        Override when an adapter must reject configs that look valid only
+        because the loader synthesizes defaults (e.g. ``paths.videos``).
+        """
+        return None
 
     @classmethod
     def validate_config(cls, config: "Config") -> None:

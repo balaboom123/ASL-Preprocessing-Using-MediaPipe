@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Iterable, List, Literal, Optional, get_args
 
 import pandas as pd
 from pydantic import BaseModel
@@ -15,14 +15,15 @@ _BUNDLED_CLASS_MAP = (
 )
 
 DEFAULT_FPS = 60.0
-_KNOWN_VARIANTS = {"raw", "cut"}
+LSA64Variant = Literal["raw", "cut"]
+_KNOWN_VARIANTS = frozenset(get_args(LSA64Variant))
 
 
 class LSA64SourceConfig(BaseModel):
     """Typed config for LSA64 adapter."""
 
     release_dir: str = ""
-    variant: Literal["raw", "cut"] = "cut"
+    variant: LSA64Variant = "cut"
     split: Literal["all", "train", "val", "test"] = "all"
     split_strategy: Literal["none", "community_signer_8_1_1"] = "none"
     train_signers: List[int] = [1, 2, 3, 4, 5, 6, 7, 8]
@@ -81,42 +82,38 @@ def resolve_video_dir(config, source: LSA64SourceConfig) -> Optional[Path]:
     return release_dir
 
 
+def _pick_unique_variant(values: Iterable[str], source_label: str) -> Optional[str]:
+    cleaned = {v for v in (str(x).strip().lower() for x in values) if v}
+    if not cleaned:
+        return None
+    if len(cleaned) > 1:
+        raise ValueError(
+            f"LSA64 manifest has mixed {source_label} values: {sorted(cleaned)}"
+        )
+    return next(iter(cleaned))
+
+
 def infer_manifest_variant(df: pd.DataFrame) -> Optional[str]:
     """Infer which LSA64 variant an existing manifest was built from."""
     if "SOURCE_VARIANT" in df.columns:
-        variants = {
-            str(value).strip().lower()
-            for value in df["SOURCE_VARIANT"].dropna().unique().tolist()
-            if str(value).strip()
-        }
-        unknown = variants - _KNOWN_VARIANTS
+        raw_values = df["SOURCE_VARIANT"].dropna().astype(str).str.strip().str.lower()
+        raw_values = raw_values[raw_values != ""]
+        unknown = set(raw_values.unique()) - _KNOWN_VARIANTS
         if unknown:
             raise ValueError(
-                f"LSA64 manifest has unsupported SOURCE_VARIANT values: "
-                f"{sorted(unknown)}"
+                f"LSA64 manifest has unsupported SOURCE_VARIANT values: {sorted(unknown)}"
             )
-        if len(variants) > 1:
-            raise ValueError(
-                f"LSA64 manifest has mixed SOURCE_VARIANT values: "
-                f"{sorted(variants)}"
-            )
-        if variants:
-            return next(iter(variants))
+        variant = _pick_unique_variant(raw_values.unique(), "SOURCE_VARIANT")
+        if variant:
+            return variant
 
     if "SAMPLE_ID" in df.columns:
-        variants = {
-            str(sample_id).split("-", 1)[0].strip().lower()
-            for sample_id in df["SAMPLE_ID"].dropna().tolist()
-            if str(sample_id).strip()
-            and str(sample_id).split("-", 1)[0].strip().lower() in _KNOWN_VARIANTS
-        }
-        if len(variants) > 1:
-            raise ValueError(
-                f"LSA64 manifest has mixed SAMPLE_ID variant prefixes: "
-                f"{sorted(variants)}"
-            )
-        if variants:
-            return next(iter(variants))
+        prefixes = (
+            df["SAMPLE_ID"].dropna().astype(str)
+            .str.split("-", n=1).str[0].str.strip().str.lower()
+        )
+        candidates = prefixes[prefixes.isin(_KNOWN_VARIANTS)].unique()
+        return _pick_unique_variant(candidates, "SAMPLE_ID variant prefix")
 
     return None
 
