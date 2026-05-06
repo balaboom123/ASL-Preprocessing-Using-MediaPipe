@@ -160,8 +160,11 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 .idea/
 
-# Claude
+# LLMs
 .claude/
+.omc/
+.codex
+
 
 # ============================================================================
 # ASL Dataset Preprocessing - Project-Specific Ignores
@@ -194,3 +197,5 @@ TODO.md
 todo/
 
 #
+**.pt
+

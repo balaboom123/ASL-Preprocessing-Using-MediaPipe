@@ -101,6 +101,41 @@ The MS-ASL dataset adapter supports two acquisition modes:
 
 - `download_mode: validate` treats files under `paths.videos` as the local clip corpus and writes per-sample `REL_PATH` values into the manifest.
 - `download_mode: download_missing` extracts YouTube IDs from the selected split JSON files and downloads any missing videos into `paths.videos`.
+## RWTH-PHOENIX-Weather
+
+Continuous German Sign Language (DGS) weather-report dataset with ~8,000 sentence-level clips across train / dev / test splits ([Camgoz et al., CVPR 2018](https://openaccess.thecvf.com/content_cvpr_2018/html/Camgoz_Neural_Sign_Language_CVPR_2018_paper.html)).
+
+**Default pose job:** `dataset.download (materialize missing videos) → dataset.manifest → processing.video2pose → post_processing.normalize → output.webdataset`
+
+```bash
+python -m signdata run configs/jobs/rwth_phoenix_weather/mediapipe.yaml \
+    dataset.source.release_dir=/path/to/PHOENIX-2014-T-release3
+```
+
+**Default video job:** `dataset.download (materialize missing videos) → dataset.manifest → processing.video2crop → output.webdataset`
+
+```bash
+python -m signdata run configs/jobs/rwth_phoenix_weather/video.yaml \
+    dataset.source.release_dir=/path/to/PHOENIX-2014-T-release3
+```
+
+**Setup:**
+1. Request and download the dataset from [RWTH-PHOENIX-Weather](https://www-i6.informatik.rwth-aachen.de/~koller/RWTH-PHOENIX/)
+2. Unpack the archive. The official release usually stores annotations under `annotations/manual/PHOENIX-2014-T.{train,dev,test}.corpus.csv` and frames under `features/fullFrame-210x260px/<split>/<clip>/`.
+3. Set `dataset.source.release_dir` to the unpacked release root, either via CLI override or in YAML.
+4. Set `paths.videos` to the directory where materialized `.mp4` files should be written.
+
+Repackaged layouts with top-level corpus CSVs and simpler relative frame paths are also accepted for compatibility, but the official release layout is the primary target.
+
+The shipped RWTH-PHOENIX-Weather configs default to `dataset.source.prepare_mode: materialize_missing` so a fresh unpacked release produces `.mp4` clips before manifest filtering.
+
+The adapter supports three prepare modes via `dataset.source.prepare_mode`:
+
+- `validate` checks that `release_dir` exists and skips frame materialization.
+- `materialize_missing` (default) encodes frame directories into `.mp4` files for clips that do not yet have a video file.
+- `rematerialize_all` force re-encodes all clips regardless of existing files.
+
+Frame directories are read in lexicographic order of their `.png` filenames. The default frame rate is 25 fps via `dataset.source.video_fps`.
 
 ## Adding a New Dataset
 
