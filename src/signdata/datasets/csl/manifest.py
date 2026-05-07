@@ -3,7 +3,7 @@
 import logging
 import os
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -86,12 +86,24 @@ def build(config, source: CSLSourceConfig, log: logging.Logger) -> pd.DataFrame:
         if sentence_id not in text_lookup:
             log.warning("No corpus text found for CSL sentence_id=%s", sentence_id)
 
+        variation_counts: Counter[int] = Counter()
         for ordinal, sample_path in enumerate(sample_paths):
             rel_path = str(sample_path.relative_to(video_dir)).replace("\\", "/")
-            signer_id, variation_id = _infer_signer_and_variation(
+            signer_id, explicit_variation_id = _infer_signer_and_variation(
                 sample_path,
-                ordinal,
+                video_dir=video_dir,
+                sentence_id=sentence_id,
+                ordinal=ordinal,
             )
+            if explicit_variation_id is not None:
+                variation_id = explicit_variation_id
+                variation_counts[signer_id] = max(
+                    variation_counts[signer_id],
+                    variation_id,
+                )
+            else:
+                variation_counts[signer_id] += 1
+                variation_id = variation_counts[signer_id]
             sample_id = f"{sentence_id:06d}_{signer_id:02d}_{variation_id:02d}"
             split_label = _resolve_split_label(
                 custom_splits=custom_splits,
@@ -208,23 +220,58 @@ def _infer_sentence_id(path: Path, video_dir: Path) -> Optional[int]:
     return None
 
 
-def _infer_signer_and_variation(path: Path, ordinal: int) -> tuple[int, int]:
-    numbers = [int(token) for token in re.findall(r"\d+", path.stem)]
+def _infer_signer_and_variation(
+    path: Path,
+    *,
+    video_dir: Path,
+    sentence_id: int,
+    ordinal: int,
+) -> tuple[int, Optional[int]]:
+    numbers = _extract_sample_numbers(
+        path,
+        video_dir=video_dir,
+        sentence_id=sentence_id,
+    )
     if len(numbers) >= 2:
-        signer_id = numbers[-2]
-        variation_id = numbers[-1]
-
-        if signer_id == 0:
-            signer_id = 1
-        if variation_id == 0:
-            variation_id = 1
-
-        if signer_id > 0 and variation_id > 0:
-            return signer_id, variation_id
+        return _normalize_csl_index(numbers[-2]), _normalize_csl_index(numbers[-1])
+    if len(numbers) == 1:
+        return _normalize_csl_index(numbers[0]), None
 
     signer_id = ordinal // REPETITIONS_PER_SIGNER + 1
     variation_id = ordinal % REPETITIONS_PER_SIGNER + 1
     return signer_id, variation_id
+
+
+def _extract_sample_numbers(
+    path: Path,
+    *,
+    video_dir: Path,
+    sentence_id: int,
+) -> list[int]:
+    relative = path.relative_to(video_dir)
+    tokens: list[int] = []
+    skipped_sentence_dir = False
+
+    for part in relative.parts[:-1]:
+        if (
+            not skipped_sentence_dir
+            and part.isdigit()
+            and int(part) == sentence_id
+        ):
+            skipped_sentence_dir = True
+            continue
+        tokens.extend(_positive_numbers(part))
+
+    tokens.extend(_positive_numbers(path.stem))
+    return tokens
+
+
+def _positive_numbers(value: str) -> list[int]:
+    return [int(token) for token in re.findall(r"\d+", value)]
+
+
+def _normalize_csl_index(value: int) -> int:
+    return value if value > 0 else 1
 
 
 def _resolve_split_label(

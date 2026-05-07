@@ -494,3 +494,140 @@ class TestCSLBuildManifest:
         assert context.videos_dir == rgb_dir
         assert list(df["REL_PATH"]) == ["000000/sample_01_01.mp4"]
         assert list(df["SAMPLE_ID"]) == ["000000_01_01"]
+
+    def test_build_manifest_uses_single_signer_token_filenames(
+        self, tmp_path, monkeypatch
+    ):
+        release_dir = tmp_path / "release"
+        _write_corpus(release_dir / "corpus.txt", [("000000", "你好")])
+        video_dir = release_dir / "color" / "000000"
+        _touch_video(video_dir / "01.mp4")
+        _touch_video(video_dir / "41.mp4")
+
+        monkeypatch.setattr(csl_manifest, "get_video_duration", lambda _: 1.0)
+        monkeypatch.setattr(csl_manifest, "get_video_fps", lambda _: 30.0)
+
+        cfg = _make_config(
+            release_dir,
+            tmp_path / "manifest.tsv",
+            paths={"root": str(release_dir), "videos": str(tmp_path / "videos")},
+            source={"prepare_mode": "validate"},
+        )
+        context = self._make_context(cfg)
+        context = CSLDataset().build_manifest(cfg, context)
+
+        df = context.manifest_df.sort_values("SAMPLE_ID").reset_index(drop=True)
+        assert list(df["SAMPLE_ID"]) == [
+            "000000_01_01",
+            "000000_41_01",
+        ]
+        assert list(df["SIGNER_ID"]) == ["1", "41"]
+        assert list(df["SPLIT"]) == ["train", "test"]
+
+    def test_build_manifest_assigns_variations_for_repeated_signer_clips(
+        self, tmp_path, monkeypatch
+    ):
+        release_dir = tmp_path / "release"
+        _write_corpus(release_dir / "corpus.txt", [("000000", "你好")])
+        video_dir = release_dir / "color" / "000000"
+        _touch_video(video_dir / "signer_01_a.mp4")
+        _touch_video(video_dir / "signer_01_b.mp4")
+
+        monkeypatch.setattr(csl_manifest, "get_video_duration", lambda _: 1.0)
+        monkeypatch.setattr(csl_manifest, "get_video_fps", lambda _: 30.0)
+
+        cfg = _make_config(
+            release_dir,
+            tmp_path / "manifest.tsv",
+            paths={"root": str(release_dir), "videos": str(tmp_path / "videos")},
+            source={"prepare_mode": "validate"},
+        )
+        context = self._make_context(cfg)
+        context = CSLDataset().build_manifest(cfg, context)
+
+        df = context.manifest_df.sort_values("REL_PATH").reset_index(drop=True)
+        assert list(df["SAMPLE_ID"]) == [
+            "000000_01_01",
+            "000000_01_02",
+        ]
+        assert list(df["VARIATION_ID"]) == [1, 2]
+
+    def test_build_manifest_continues_after_explicit_variation_id(
+        self, tmp_path, monkeypatch
+    ):
+        release_dir = tmp_path / "release"
+        _write_corpus(release_dir / "corpus.txt", [("000000", "你好")])
+        video_dir = release_dir / "color" / "000000"
+        _touch_video(video_dir / "sample_01_02.mp4")
+        _touch_video(video_dir / "signer_01_extra.mp4")
+
+        monkeypatch.setattr(csl_manifest, "get_video_duration", lambda _: 1.0)
+        monkeypatch.setattr(csl_manifest, "get_video_fps", lambda _: 30.0)
+
+        cfg = _make_config(
+            release_dir,
+            tmp_path / "manifest.tsv",
+            paths={"root": str(release_dir), "videos": str(tmp_path / "videos")},
+            source={"prepare_mode": "validate"},
+        )
+        context = self._make_context(cfg)
+        context = CSLDataset().build_manifest(cfg, context)
+
+        df = context.manifest_df.sort_values("REL_PATH").reset_index(drop=True)
+        assert list(df["SAMPLE_ID"]) == [
+            "000000_01_02",
+            "000000_01_03",
+        ]
+
+    def test_build_manifest_falls_back_for_non_numeric_sample_names(
+        self, tmp_path, monkeypatch
+    ):
+        release_dir = tmp_path / "release"
+        _write_corpus(release_dir / "corpus.txt", [("000000", "你好")])
+        video_dir = release_dir / "color" / "000000"
+        _touch_video(video_dir / "clip_a.mp4")
+        _touch_video(video_dir / "clip_b.mp4")
+
+        monkeypatch.setattr(csl_manifest, "get_video_duration", lambda _: 1.0)
+        monkeypatch.setattr(csl_manifest, "get_video_fps", lambda _: 30.0)
+
+        cfg = _make_config(
+            release_dir,
+            tmp_path / "manifest.tsv",
+            paths={"root": str(release_dir), "videos": str(tmp_path / "videos")},
+            source={"prepare_mode": "validate"},
+        )
+        context = self._make_context(cfg)
+        context = CSLDataset().build_manifest(cfg, context)
+
+        df = context.manifest_df.sort_values("REL_PATH").reset_index(drop=True)
+        assert list(df["SAMPLE_ID"]) == [
+            "000000_01_01",
+            "000000_01_02",
+        ]
+        assert list(df["VARIATION_ID"]) == [1, 2]
+
+    def test_build_manifest_normalizes_zero_based_signer_and_variation(
+        self, tmp_path, monkeypatch
+    ):
+        release_dir = tmp_path / "release"
+        _write_corpus(release_dir / "corpus.txt", [("000000", "你好")])
+        video_dir = release_dir / "color" / "000000"
+        _touch_video(video_dir / "sample_00_00.mp4")
+
+        monkeypatch.setattr(csl_manifest, "get_video_duration", lambda _: 1.0)
+        monkeypatch.setattr(csl_manifest, "get_video_fps", lambda _: 30.0)
+
+        cfg = _make_config(
+            release_dir,
+            tmp_path / "manifest.tsv",
+            paths={"root": str(release_dir), "videos": str(tmp_path / "videos")},
+            source={"prepare_mode": "validate"},
+        )
+        context = self._make_context(cfg)
+        context = CSLDataset().build_manifest(cfg, context)
+
+        df = context.manifest_df
+        assert list(df["SAMPLE_ID"]) == ["000000_01_01"]
+        assert list(df["SIGNER_ID"]) == ["1"]
+        assert list(df["VARIATION_ID"]) == [1]

@@ -32,7 +32,7 @@ Supports multiple extractors including **MediaPipe Holistic**, **MMPose**, **MMD
 | **[How2Sign](docs/datasets.md#how2sign)** | CVPR 2021 | 80+ hours of instructional ASL in a controlled studio environment | [CC BY-NC 4.0](https://how2sign.github.io/) |
 | **[WLASL](docs/datasets.md#wlasl)** | WACV 2020 | 12,000+ isolated sign clips across 2,000 ASL glosses | [Dataset site](https://dxli94.github.io/WLASL/) |
 | **[MS-ASL](docs/datasets.md#ms-asl)** | CVPR 2019 | Large-scale isolated ASL dataset with signer-diverse lexical clips | [Microsoft Download Center terms](https://www.microsoft.com/en-us/download/details.aspx?id=100121) |
-| **[CSL](docs/datasets.md#csl)** | USTC release 2015 | 100 continuous Chinese sign sentences with 50 signers × 5 repetitions and RGB/depth/skeleton modalities | [CSL release agreement](https://ustc-slr.github.io/datasets/2015_csl/Release-Agreement-csl2015.pdf) |
+| **[CSL](docs/datasets.md#csl)** | USTC release 2015 | 100 continuous Chinese sign sentences from 50 signers; RGB/depth/skeleton release with paper-aligned Split I / Split II evaluation | [CSL release agreement](https://ustc-slr.github.io/datasets/2015_csl/Release-Agreement-csl2015.pdf) |
 | **[LSA64](docs/datasets.md#lsa64)** | CACIC 2016 | 3,200 isolated Argentinian Sign Language clips across 64 glosses | [CC BY-NC-SA 4.0](https://facundoq.github.io/datasets/lsa64/) |
 
 For paper-aligned preprocessing methodology, see [Research-Aligned Preprocessing](docs/research-preprocessing.md).
