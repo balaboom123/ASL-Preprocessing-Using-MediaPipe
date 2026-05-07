@@ -16,6 +16,11 @@ class LSA64Dataset(DatasetAdapter):
     name = "lsa64"
 
     @classmethod
+    def _get_validated_source_config(cls, config) -> _source.LSA64SourceConfig:
+        cls.validate_config(config)
+        return _source.get_source_config(config)
+
+    @classmethod
     def validate_raw_inputs(cls, raw: Dict[str, Any]) -> None:
         dataset_dict = raw.get("dataset") if isinstance(raw.get("dataset"), dict) else {}
         source_dict = dataset_dict.get("source") if isinstance(dataset_dict.get("source"), dict) else {}
@@ -43,10 +48,11 @@ class LSA64Dataset(DatasetAdapter):
         return _source.get_source_config(config)
 
     def resolve_videos_dir(self, config) -> Path | None:
-        return _source.resolve_video_dir(config, _source.get_source_config(config))
+        source = self._get_validated_source_config(config)
+        return _source.resolve_video_dir(config, source)
 
     def download(self, config, context):
-        source = _source.get_source_config(config)
+        source = self._get_validated_source_config(config)
         video_dir = _source.resolve_video_dir(config, source)
         stats = _source.validate_release(source, video_dir, self.logger)
         context.videos_dir = video_dir
@@ -54,7 +60,7 @@ class LSA64Dataset(DatasetAdapter):
         return context
 
     def build_manifest(self, config, context):
-        source = _source.get_source_config(config)
+        source = self._get_validated_source_config(config)
         video_dir = _source.resolve_video_dir(config, source)
         context.videos_dir = video_dir
         df = _manifest.build(config, source, video_dir, self.logger)
@@ -76,8 +82,9 @@ class LSA64Dataset(DatasetAdapter):
     def validate_loaded_manifest(self, config, context) -> None:
         if context.manifest_df is None:
             return
+        source = self._get_validated_source_config(config)
         _source.validate_loaded_manifest_variant(
             context.manifest_df,
             context.manifest_path,
-            _source.get_source_config(config),
+            source,
         )

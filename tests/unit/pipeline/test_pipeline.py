@@ -254,6 +254,32 @@ class TestPipelineRunnerOrchestration:
         with pytest.raises(ValueError, match="variant"):
             PipelineRunner(reuse_cfg).run()
 
+    def test_lsa64_pipeline_rejects_conflicting_explicit_variant_dir(self, tmp_path):
+        raw_dir = tmp_path / "lsa64" / "raw"
+
+        cfg = Config(
+            dataset={
+                "name": "lsa64",
+                "download": False,
+                "manifest": True,
+                "source": {
+                    "release_dir": str(raw_dir),
+                    "variant": "cut",
+                    "allow_missing_class_map": True,
+                },
+            },
+            processing={"enabled": False},
+            post_processing={"enabled": False},
+            output={"enabled": False},
+            paths={
+                "videos": str(raw_dir),
+                "manifest": str(tmp_path / "manifest.tsv"),
+            },
+        )
+
+        with pytest.raises(ValueError, match="conflicts with explicit directory"):
+            PipelineRunner(cfg).run()
+
     @patch.object(YouTubeASLDataset, "download")
     def test_processing_stage(self, mock_download):
         mock_download.side_effect = lambda cfg, ctx: ctx

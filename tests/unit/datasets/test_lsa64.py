@@ -285,6 +285,23 @@ class TestLSA64BuildManifest:
         assert list(df["VIDEO_ID"]) == ["01_09_01"]
         assert list(df["SPLIT"]) == ["val"]
 
+    def test_build_manifest_rejects_conflicting_explicit_variant_dir(self, tmp_path):
+        raw_dir = tmp_path / "release" / "raw"
+        _touch_video(raw_dir / "01_01_01.mp4")
+
+        cfg = _make_config(
+            raw_dir,
+            tmp_path / "manifest.tsv",
+            source={
+                "variant": "cut",
+                "allow_missing_class_map": True,
+            },
+            paths={"videos": str(raw_dir)},
+        )
+
+        with pytest.raises(ValueError, match="conflicts with explicit directory"):
+            LSA64Dataset().build_manifest(cfg, self._make_context(cfg))
+
 
 class TestLSA64LoadedManifestValidation:
     def test_accepts_legacy_manifest_when_sample_ids_match_variant(self, tmp_path):
@@ -318,4 +335,25 @@ class TestLSA64LoadedManifestValidation:
         })
 
         with pytest.raises(ValueError, match="variant"):
+            LSA64Dataset().validate_loaded_manifest(cfg, context)
+
+    def test_rejects_loaded_manifest_with_conflicting_explicit_variant_dir(self, tmp_path):
+        raw_dir = tmp_path / "release" / "raw"
+        raw_dir.mkdir(parents=True)
+
+        cfg = _make_config(
+            raw_dir,
+            tmp_path / "manifest.tsv",
+            source={"variant": "cut"},
+            paths={"videos": str(raw_dir)},
+        )
+        context = PipelineContext(config=cfg, dataset=LSA64Dataset())
+        context.manifest_path = tmp_path / "manifest.tsv"
+        context.manifest_df = pd.DataFrame({
+            "SAMPLE_ID": ["cut-01_01_01"],
+            "VIDEO_ID": ["01_01_01"],
+            "REL_PATH": ["01_01_01.mp4"],
+        })
+
+        with pytest.raises(ValueError, match="conflicts with explicit directory"):
             LSA64Dataset().validate_loaded_manifest(cfg, context)
