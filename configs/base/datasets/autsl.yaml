@@ -1,0 +1,11 @@
+dataset:
+  name: autsl
+  download: true
+  manifest: true
+  source:
+    release_dir: dataset/autsl
+    variant: challenge_2021
+    split: all
+    modality: rgb
+    availability_policy: drop_unavailable
+    allow_unlabeled: false

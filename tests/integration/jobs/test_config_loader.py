@@ -222,6 +222,33 @@ class TestResolvePaths:
             project_root / "dataset" / "msasl" / "annotations"
         )
 
+    def test_autsl_optional_source_files_relative_resolved(self):
+        cfg = Config(
+            dataset={
+                "name": "test",
+                "source": {
+                    "class_id_file": "dataset/autsl/SignList_ClassId_TR_EN.csv",
+                    "train_labels_file": "dataset/autsl/train_labels.csv",
+                    "val_labels_file": "dataset/autsl/val_labels.csv",
+                    "test_labels_file": "dataset/autsl/test_labels.csv",
+                },
+            },
+        )
+        project_root = Path("/proj")
+        cfg = resolve_paths(cfg, project_root)
+        assert cfg.dataset.source["class_id_file"] == str(
+            project_root / "dataset" / "autsl" / "SignList_ClassId_TR_EN.csv"
+        )
+        assert cfg.dataset.source["train_labels_file"] == str(
+            project_root / "dataset" / "autsl" / "train_labels.csv"
+        )
+        assert cfg.dataset.source["val_labels_file"] == str(
+            project_root / "dataset" / "autsl" / "val_labels.csv"
+        )
+        assert cfg.dataset.source["test_labels_file"] == str(
+            project_root / "dataset" / "autsl" / "test_labels.csv"
+        )
+
     def test_corpus_file_relative_resolved(self):
         cfg = Config(
             dataset={
@@ -402,6 +429,45 @@ class TestLoadConfig:
         assert cfg.processing.processor == "video2crop"
         assert cfg.processing.detection == "yolo"
 
+    def test_load_autsl_pose_mediapipe(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "autsl" / "mediapipe.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "autsl"
+        assert cfg.dataset.source["release_dir"] == str(project_root / "dataset" / "autsl")
+        assert cfg.dataset.source["variant"] == "challenge_2021"
+        assert cfg.dataset.source["modality"] == "rgb"
+        assert cfg.dataset.source["allow_unlabeled"] is False
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.pose == "mediapipe"
+        assert cfg.paths.videos == str(project_root / "dataset" / "autsl")
+
+    def test_load_autsl_pose_mmpose(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "autsl" / "mmpose.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "autsl"
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.detection == "mmdet"
+        assert cfg.processing.pose == "mmpose"
+
+    def test_load_autsl_video_yolo(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "autsl" / "video.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "autsl"
+        assert cfg.processing.processor == "video2crop"
+        assert cfg.processing.detection == "yolo"
+
     def test_load_lsa64_pose_mediapipe(self, project_root):
         import signdata.datasets
         import signdata.processors
@@ -485,6 +551,21 @@ class TestLoadConfig:
         yaml_path.parent.mkdir(parents=True)
         yaml_path.write_text(yaml.dump({
             "dataset": {"name": "lsa64"},
+            "processing": {"enabled": False},
+            "post_processing": {"enabled": False},
+            "output": {"enabled": False},
+        }))
+
+        with pytest.raises(ValueError, match="release_dir|paths\\.videos"):
+            load_config(str(yaml_path))
+
+    def test_load_autsl_requires_explicit_release_dir_or_paths_videos(self, tmp_path):
+        import signdata.datasets
+
+        yaml_path = tmp_path / "configs" / "jobs" / "autsl.yaml"
+        yaml_path.parent.mkdir(parents=True)
+        yaml_path.write_text(yaml.dump({
+            "dataset": {"name": "autsl"},
             "processing": {"enabled": False},
             "post_processing": {"enabled": False},
             "output": {"enabled": False},

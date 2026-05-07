@@ -271,7 +271,8 @@ def resolve_paths(config: Config, project_root: Path) -> Config:
         "video_ids_file", "manifest_tsv", "manifest_csv",
         "release_dir", "class_map_file", "annotations_csv",
         "annotations_dir", "metadata_json", "annotation_json", "bbox_json",
-        "corpus_file", "split_spec_file",
+        "corpus_file", "split_spec_file", "class_id_file",
+        "train_labels_file", "val_labels_file", "test_labels_file",
     ):
         val = source.get(source_key, "")
         if val:
