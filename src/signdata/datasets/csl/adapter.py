@@ -23,30 +23,7 @@ class CSLDataset(DatasetAdapter):
                 "csl requires dataset.source.release_dir or paths.root "
                 "pointing to the local CSL release directory."
             )
-        if source.variant not in _source.SUPPORTED_VARIANTS:
-            raise ValueError(
-                f"Unsupported CSL variant: {source.variant!r}. "
-                f"Valid options: {sorted(_source.SUPPORTED_VARIANTS)}."
-            )
-        if source.protocol not in _source.SUPPORTED_PROTOCOLS:
-            raise ValueError(
-                f"Unsupported CSL protocol: {source.protocol!r}. "
-                f"Valid options: {sorted(_source.SUPPORTED_PROTOCOLS)}."
-            )
-        if source.split not in _source.SUPPORTED_SPLITS:
-            raise ValueError(
-                f"Unsupported CSL split: {source.split!r}. "
-                f"Valid options: {sorted(_source.SUPPORTED_SPLITS)}."
-            )
-        if source.prepare_mode not in _source.SUPPORTED_PREPARE_MODES:
-            raise ValueError(
-                f"Unsupported CSL prepare_mode: {source.prepare_mode!r}. "
-                f"Valid options: {sorted(_source.SUPPORTED_PREPARE_MODES)}."
-            )
-        if source.split_spec_file and not Path(source.split_spec_file).exists():
-            raise ValueError(
-                f"CSL split_spec_file not found: {source.split_spec_file}"
-            )
+        _source.validate_source_config(source)
 
     def get_source_config(self, config) -> _source.CSLSourceConfig:
         return _source.get_source_config(config)

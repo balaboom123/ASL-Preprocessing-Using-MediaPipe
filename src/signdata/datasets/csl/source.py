@@ -38,7 +38,6 @@ class CSLSourceConfig(BaseModel):
     availability_policy: AvailabilityPolicy = "drop_unavailable"
     rgb_subdir: str = "color"
     corpus_file: str = ""
-    dictionary_file: str = ""
     prepare_mode: str = "materialize_missing"
     video_fps: float = DEFAULT_FPS
 
@@ -53,6 +52,39 @@ def get_source_config(config) -> CSLSourceConfig:
 def resolve_release_dir(source: CSLSourceConfig, config) -> Path:
     raw = source.release_dir or (config.paths.root or "")
     return Path(raw)
+
+
+def validate_source_config(source: CSLSourceConfig) -> None:
+    """Validate adapter-level CSL source options."""
+    if source.video_fps <= 0:
+        raise ValueError(
+            f"Unsupported CSL video_fps: {source.video_fps!r}. "
+            "Expected a positive frame rate."
+        )
+    if source.variant not in SUPPORTED_VARIANTS:
+        raise ValueError(
+            f"Unsupported CSL variant: {source.variant!r}. "
+            f"Valid options: {sorted(SUPPORTED_VARIANTS)}."
+        )
+    if source.protocol not in SUPPORTED_PROTOCOLS:
+        raise ValueError(
+            f"Unsupported CSL protocol: {source.protocol!r}. "
+            f"Valid options: {sorted(SUPPORTED_PROTOCOLS)}."
+        )
+    if source.split not in SUPPORTED_SPLITS:
+        raise ValueError(
+            f"Unsupported CSL split: {source.split!r}. "
+            f"Valid options: {sorted(SUPPORTED_SPLITS)}."
+        )
+    if source.prepare_mode not in SUPPORTED_PREPARE_MODES:
+        raise ValueError(
+            f"Unsupported CSL prepare_mode: {source.prepare_mode!r}. "
+            f"Valid options: {sorted(SUPPORTED_PREPARE_MODES)}."
+        )
+    if source.split_spec_file and not Path(source.split_spec_file).exists():
+        raise ValueError(
+            f"CSL split_spec_file not found: {source.split_spec_file}"
+        )
 
 
 def resolve_corpus_file(
@@ -138,27 +170,7 @@ def iter_sample_frame_dirs(root: Path) -> Iterable[tuple[Path, Path]]:
 def prepare(source: CSLSourceConfig, config, log: logging.Logger) -> dict:
     """Validate or prepare a local CSL release for pipeline consumption."""
     release_dir = resolve_release_dir(source, config)
-
-    if source.variant not in SUPPORTED_VARIANTS:
-        raise ValueError(
-            f"Unsupported CSL variant: {source.variant!r}. "
-            f"Valid options: {sorted(SUPPORTED_VARIANTS)}."
-        )
-    if source.protocol not in SUPPORTED_PROTOCOLS:
-        raise ValueError(
-            f"Unsupported CSL protocol: {source.protocol!r}. "
-            f"Valid options: {sorted(SUPPORTED_PROTOCOLS)}."
-        )
-    if source.split not in SUPPORTED_SPLITS:
-        raise ValueError(
-            f"Unsupported CSL split: {source.split!r}. "
-            f"Valid options: {sorted(SUPPORTED_SPLITS)}."
-        )
-    if source.prepare_mode not in SUPPORTED_PREPARE_MODES:
-        raise ValueError(
-            f"Unsupported CSL prepare_mode: {source.prepare_mode!r}. "
-            f"Valid options: {sorted(SUPPORTED_PREPARE_MODES)}."
-        )
+    validate_source_config(source)
 
     if not str(release_dir).strip():
         raise FileNotFoundError(
@@ -203,31 +215,23 @@ def prepare(source: CSLSourceConfig, config, log: logging.Logger) -> dict:
             materialized_has_videos=materialized_has_videos,
             frame_layout=frame_layout,
         )
-        return {
-            "validated": True,
-            "materialized": 0,
-            "errors": 0,
-            "release_dir": str(release_dir),
-            "corpus_file": str(corpus_path),
-            "runtime_video_dir": str(runtime_dir),
-            "variant": source.variant,
-            "protocol": source.protocol,
-            "mode": source.prepare_mode,
-        }
+        return _build_prepare_stats(
+            source=source,
+            release_dir=release_dir,
+            corpus_path=corpus_path,
+            runtime_video_dir=runtime_dir,
+            validated=True,
+        )
 
     if rgb_has_videos:
         log.info("CSL RGB directory already contains video files: %s", rgb_dir)
-        return {
-            "validated": True,
-            "materialized": 0,
-            "errors": 0,
-            "release_dir": str(release_dir),
-            "corpus_file": str(corpus_path),
-            "runtime_video_dir": str(rgb_dir),
-            "variant": source.variant,
-            "protocol": source.protocol,
-            "mode": source.prepare_mode,
-        }
+        return _build_prepare_stats(
+            source=source,
+            release_dir=release_dir,
+            corpus_path=corpus_path,
+            runtime_video_dir=rgb_dir,
+            validated=True,
+        )
 
     if not frame_layout:
         if materialized_has_videos:
@@ -235,17 +239,13 @@ def prepare(source: CSLSourceConfig, config, log: logging.Logger) -> dict:
                 "Using previously materialized CSL videos in %s",
                 materialized_dir,
             )
-            return {
-                "validated": True,
-                "materialized": 0,
-                "errors": 0,
-                "release_dir": str(release_dir),
-                "corpus_file": str(corpus_path),
-                "runtime_video_dir": str(materialized_dir),
-                "variant": source.variant,
-                "protocol": source.protocol,
-                "mode": source.prepare_mode,
-            }
+            return _build_prepare_stats(
+                source=source,
+                release_dir=release_dir,
+                corpus_path=corpus_path,
+                runtime_video_dir=materialized_dir,
+                validated=True,
+            )
         raise FileNotFoundError(
             f"No CSL video files or frame directories found under {rgb_dir}.\n"
             "Expected either RGB video clips or per-sample frame folders."
@@ -259,14 +259,41 @@ def prepare(source: CSLSourceConfig, config, log: logging.Logger) -> dict:
         overwrite=overwrite,
         log=log,
     )
+    if materialized == 0 and validated == 0:
+        raise RuntimeError(
+            "CSL frame-folder preparation did not produce any usable videos. "
+            f"Checked RGB source {rgb_dir} and output directory {materialized_dir}. "
+            "Check ffmpeg availability, video_fps, and frame naming."
+        )
 
+    return _build_prepare_stats(
+        source=source,
+        release_dir=release_dir,
+        corpus_path=corpus_path,
+        runtime_video_dir=materialized_dir,
+        validated=validated > 0 or materialized > 0,
+        materialized=materialized,
+        errors=errors,
+    )
+
+
+def _build_prepare_stats(
+    *,
+    source: CSLSourceConfig,
+    release_dir: Path,
+    corpus_path: Path,
+    runtime_video_dir: Path,
+    validated: bool,
+    materialized: int = 0,
+    errors: int = 0,
+) -> dict:
     return {
-        "validated": validated > 0 or materialized > 0,
+        "validated": validated,
         "materialized": materialized,
         "errors": errors,
         "release_dir": str(release_dir),
         "corpus_file": str(corpus_path),
-        "runtime_video_dir": str(materialized_dir),
+        "runtime_video_dir": str(runtime_video_dir),
         "variant": source.variant,
         "protocol": source.protocol,
         "mode": source.prepare_mode,
@@ -357,10 +384,17 @@ def _contains_frame_files(path: Path) -> bool:
     )
 
 
-def _resolve_frame_pattern(sample_dir: Path) -> str:
-    for child in sorted(sample_dir.iterdir()):
-        if child.is_file() and child.suffix.lower() in FRAME_EXTENSIONS:
-            return f"*{child.suffix.lower()}"
+def _resolve_frame_pattern(sample_dir: Path) -> str | tuple[str, ...]:
+    patterns = sorted(
+        {
+            f"*{child.suffix}"
+            for child in sample_dir.iterdir()
+            if child.is_file() and child.suffix.lower() in FRAME_EXTENSIONS
+        },
+        key=lambda pattern: (pattern.lower(), pattern),
+    )
+    if patterns:
+        return patterns[0] if len(patterns) == 1 else tuple(patterns)
     raise FileNotFoundError(
         f"No supported CSL frame files found in sample directory: {sample_dir}"
     )

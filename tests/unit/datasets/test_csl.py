@@ -124,6 +124,19 @@ class TestCSLValidateConfig:
         with pytest.raises(ValueError, match="split"):
             CSLDataset.validate_config(cfg)
 
+    def test_non_positive_video_fps_raises(self, tmp_path):
+        cfg = Config(
+            dataset={
+                "name": "csl",
+                "source": {
+                    "release_dir": str(tmp_path),
+                    "video_fps": 0,
+                },
+            },
+        )
+        with pytest.raises(ValueError, match="video_fps|positive"):
+            CSLDataset.validate_config(cfg)
+
 
 class TestCSLSourceConfig:
     def test_defaults(self, tmp_path):
@@ -248,6 +261,119 @@ class TestCSLDownload:
             "*.bmp",
             False,
         )
+
+    def test_materialize_mode_preserves_uppercase_frame_extension(
+        self, tmp_path, monkeypatch
+    ):
+        release_dir = tmp_path / "release"
+        _write_corpus(release_dir / "corpus.txt", [("000000", "你好")])
+        sample_dir = release_dir / "color" / "000000" / "sample_01_01"
+        sample_dir.mkdir(parents=True, exist_ok=True)
+        (sample_dir / "000001.JPG").touch()
+        output_dir = tmp_path / "videos"
+        captured = {}
+
+        def fake_materialize(input_dir, output_path, fps, pattern, overwrite):
+            captured["call"] = (input_dir, output_path, fps, pattern, overwrite)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.touch()
+
+        monkeypatch.setattr(
+            csl_source,
+            "materialize_frames_to_video",
+            fake_materialize,
+        )
+
+        cfg = _make_config(
+            release_dir,
+            tmp_path / "manifest.tsv",
+            paths={"root": str(release_dir), "videos": str(output_dir)},
+        )
+
+        adapter = CSLDataset()
+        context = PipelineContext(config=cfg, dataset=adapter)
+        context = adapter.download(cfg, context)
+
+        assert context.stats["dataset.download"]["materialized"] == 1
+        assert captured["call"] == (
+            sample_dir,
+            output_dir / "000000" / "sample_01_01.mp4",
+            30.0,
+            "*.JPG",
+            False,
+        )
+
+    def test_materialize_mode_collects_mixed_case_frame_extensions(
+        self, tmp_path, monkeypatch
+    ):
+        release_dir = tmp_path / "release"
+        _write_corpus(release_dir / "corpus.txt", [("000000", "你好")])
+        sample_dir = release_dir / "color" / "000000" / "sample_01_01"
+        sample_dir.mkdir(parents=True, exist_ok=True)
+        (sample_dir / "000001.jpg").touch()
+        (sample_dir / "000002.JPG").touch()
+        output_dir = tmp_path / "videos"
+        captured = {}
+
+        def fake_materialize(input_dir, output_path, fps, pattern, overwrite):
+            captured["call"] = (input_dir, output_path, fps, pattern, overwrite)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.touch()
+
+        monkeypatch.setattr(
+            csl_source,
+            "materialize_frames_to_video",
+            fake_materialize,
+        )
+
+        cfg = _make_config(
+            release_dir,
+            tmp_path / "manifest.tsv",
+            paths={"root": str(release_dir), "videos": str(output_dir)},
+        )
+
+        adapter = CSLDataset()
+        context = PipelineContext(config=cfg, dataset=adapter)
+        context = adapter.download(cfg, context)
+
+        assert context.stats["dataset.download"]["materialized"] == 1
+        assert captured["call"][:3] == (
+            sample_dir,
+            output_dir / "000000" / "sample_01_01.mp4",
+            30.0,
+        )
+        assert set(captured["call"][3]) == {"*.jpg", "*.JPG"}
+        assert captured["call"][4] is False
+
+    def test_materialize_mode_raises_when_no_videos_are_produced(
+        self, tmp_path, monkeypatch
+    ):
+        release_dir = tmp_path / "release"
+        _write_corpus(release_dir / "corpus.txt", [("000000", "你好")])
+        sample_dir = release_dir / "color" / "000000" / "sample_01_01"
+        _write_frames(sample_dir)
+        output_dir = tmp_path / "videos"
+
+        def fake_materialize(*args, **kwargs):
+            raise RuntimeError("ffmpeg failed")
+
+        monkeypatch.setattr(
+            csl_source,
+            "materialize_frames_to_video",
+            fake_materialize,
+        )
+
+        cfg = _make_config(
+            release_dir,
+            tmp_path / "manifest.tsv",
+            paths={"root": str(release_dir), "videos": str(output_dir)},
+        )
+
+        adapter = CSLDataset()
+        context = PipelineContext(config=cfg, dataset=adapter)
+
+        with pytest.raises(RuntimeError, match="did not produce any usable videos"):
+            adapter.download(cfg, context)
 
 
 class TestCSLBuildManifest:
