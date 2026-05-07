@@ -222,6 +222,32 @@ class TestResolvePaths:
             project_root / "dataset" / "msasl" / "annotations"
         )
 
+    def test_corpus_file_relative_resolved(self):
+        cfg = Config(
+            dataset={
+                "name": "test",
+                "source": {"corpus_file": "dataset/csl/corpus.txt"},
+            },
+        )
+        project_root = Path("/proj")
+        cfg = resolve_paths(cfg, project_root)
+        assert cfg.dataset.source["corpus_file"] == str(
+            project_root / "dataset" / "csl" / "corpus.txt"
+        )
+
+    def test_split_spec_file_relative_resolved(self):
+        cfg = Config(
+            dataset={
+                "name": "test",
+                "source": {"split_spec_file": "dataset/csl/splits.tsv"},
+            },
+        )
+        project_root = Path("/proj")
+        cfg = resolve_paths(cfg, project_root)
+        assert cfg.dataset.source["split_spec_file"] == str(
+            project_root / "dataset" / "csl" / "splits.tsv"
+        )
+
     def test_detection_model_paths_resolved(self):
         """processing.detection_config model paths resolve relative to project root."""
         cfg = Config(
@@ -412,6 +438,43 @@ class TestLoadConfig:
         cfg = load_config(yaml_path)
 
         assert cfg.dataset.name == "lsa64"
+        assert cfg.processing.processor == "video2crop"
+        assert cfg.processing.detection == "yolo"
+
+    def test_load_csl_pose_mediapipe(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "csl" / "mediapipe.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "csl"
+        assert cfg.dataset.source["release_dir"] == str(project_root / "dataset" / "csl")
+        assert cfg.dataset.source["variant"] == "continuous_2015"
+        assert cfg.dataset.source["prepare_mode"] == "materialize_missing"
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.pose == "mediapipe"
+
+    def test_load_csl_pose_mmpose(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "csl" / "mmpose.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "csl"
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.detection == "mmdet"
+        assert cfg.processing.pose == "mmpose"
+
+    def test_load_csl_video_yolo(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "csl" / "video.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "csl"
         assert cfg.processing.processor == "video2crop"
         assert cfg.processing.detection == "yolo"
 

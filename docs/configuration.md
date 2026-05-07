@@ -66,6 +66,10 @@ configs/
     │   ├── mediapipe.yaml
     │   ├── mmpose.yaml
     │   └── video.yaml
+    ├── csl/
+    │   ├── mediapipe.yaml
+    │   ├── mmpose.yaml
+    │   └── video.yaml
     ├── youtube_asl/
     │   ├── mediapipe.yaml
     │   ├── mmpose.yaml
@@ -135,6 +139,8 @@ If omitted, the loader derives these defaults from `paths.root`:
 | `languages` | `list[str]` | adapter defaults | Transcript language codes |
 | `availability_policy` | `str` | `"drop_unavailable"` | Availability handling policy for datasets that may have missing clips |
 | `download_mode` | `str` | adapter defaults | Dataset acquisition mode such as `validate` or `download_missing`; WLASL uses `validate` for local preprocessed clips and `download_missing` for raw-source URL fetches |
+| `prepare_mode` | `str` | adapter defaults | Local release preparation mode for datasets such as RWTH-PHOENIX-Weather and CSL; CSL uses `validate`, `materialize_missing`, or `rematerialize_all` to select between existing RGB videos and frame-folder materialization |
+| `video_fps` | `float` | adapter defaults | Frame rate used when materializing frame-folder datasets such as CSL or RWTH-PHOENIX-Weather into `.mp4` clips |
 | `download_format` | `str` | `"worstvideo[...]+worstaudio/.../best"` | yt-dlp format selector |
 | `rate_limit` | `str` | `"5M"` | Download rate limit |
 | `concurrent_fragments` | `int` | `5` | Parallel download fragments |
@@ -146,7 +152,11 @@ If omitted, the loader derives these defaults from `paths.root`:
 | `max_duration` | `float` | `60.0` | Max segment duration |
 | `manifest_csv` | `str` | `""` | Existing manifest path for datasets such as How2Sign |
 | `split` | `str` | `"all"` | Split label for datasets such as How2Sign, WLASL, and MS-ASL |
-| `split_strategy` | `str` | adapter defaults | Split assignment policy for datasets such as LSA64 and CSL |
+| `split_strategy` | `str` | adapter defaults | Split assignment policy for datasets such as LSA64 |
+| `protocol` | `str` | adapter defaults | Evaluation protocol name for datasets such as CSL (`split_i` or `split_ii`) |
+| `rgb_subdir` | `str` | adapter defaults | Relative RGB data directory inside a local release such as CSL |
+| `corpus_file` | `str` | `""` | Sentence text file for corpora such as CSL |
+| `split_spec_file` | `str` | `""` | Optional per-sample split override TSV for datasets such as CSL |
 | `subset` | `int` | `0` | Optional class-count subset for datasets such as WLASL and MS-ASL |
 | `train_signers` / `val_signers` / `test_signers` | `list[int]` | adapter defaults | Explicit signer groups for signer-based datasets such as LSA64 |
 | `class_map_file` | `str` | `""` | Optional class-id to gloss mapping TSV; LSA64 and SLoVo can use bundled defaults |
@@ -154,8 +164,8 @@ If omitted, the loader derives these defaults from `paths.root`:
 | `text_processing` | `dict` | adapter defaults | Text cleanup options for transcript-derived manifests |
 
 Relative file paths in `dataset.source`, such as `video_ids_file`, `manifest_csv`,
-`annotations_dir`, `metadata_json`, `annotation_json`, `release_dir`, and `class_map_file`,
-are resolved from the project root.
+`annotations_dir`, `metadata_json`, `annotation_json`, `release_dir`, `class_map_file`,
+`corpus_file`, and `split_spec_file`, are resolved from the project root.
 
 ## `processing`
 

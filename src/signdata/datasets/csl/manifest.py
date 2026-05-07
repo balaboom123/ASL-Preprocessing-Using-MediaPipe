@@ -2,15 +2,19 @@
 
 import logging
 import os
+import re
+from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import pandas as pd
 
 from .._ingestion.availability import apply_availability_policy_paths
+from .._ingestion.media import get_video_duration, get_video_fps
 from .source import (
     CSLSourceConfig,
     DEFAULT_FPS,
+    REPETITIONS_PER_SIGNER,
     SPLIT_I_TEST_SIGNERS,
     SPLIT_I_TRAIN_SIGNERS,
     SPLIT_II_TEST_SENTENCES,
@@ -18,89 +22,104 @@ from .source import (
     VIDEO_EXTENSIONS,
     resolve_corpus_file,
     resolve_release_dir,
-    resolve_video_dir,
+    resolve_runtime_video_dir,
 )
 
 
 def build(config, source: CSLSourceConfig, log: logging.Logger) -> pd.DataFrame:
-    """Build canonical manifest from CSL corpus file and video directory."""
+    """Build a canonical manifest from the continuous CSL release."""
     manifest_path = config.paths.manifest
-
     release_dir = resolve_release_dir(source, config)
+    video_dir = resolve_runtime_video_dir(source, config)
+
     if not release_dir.exists():
         raise FileNotFoundError(
             f"CSL release directory not found: {release_dir!r}. "
-            f"Run the download stage first or set release_dir / paths.videos."
+            "Run the download stage first or set release_dir / paths.root."
+        )
+    if not video_dir.exists():
+        raise FileNotFoundError(
+            f"CSL runtime video directory not found: {video_dir!r}. "
+            "Run the dataset.download stage first to validate or materialize videos."
         )
 
     corpus_path = resolve_corpus_file(source, release_dir, log)
     if corpus_path is None:
         raise FileNotFoundError(
             f"CSL corpus file not found under {release_dir}. "
-            f"Set dataset.source.corpus_file explicitly."
+            "Set dataset.source.corpus_file explicitly."
         )
-
-    video_dir = resolve_video_dir(release_dir, source)
 
     corpus = _parse_corpus(corpus_path, log)
     if corpus.empty:
         raise RuntimeError(
-            f"CSL corpus file produced no rows: {corpus_path}. "
-            f"Check the file format."
+            f"CSL corpus file produced no rows: {corpus_path}. Check the file format."
         )
-    log.info("Loaded CSL corpus: %d rows from %s", len(corpus), corpus_path)
+
+    text_lookup = dict(zip(corpus["sentence_id"], corpus["text"]))
+    max_sentence_id = int(corpus["sentence_id"].max())
+    sentence_base = 0 if max_sentence_id <= 99 else 1
 
     custom_splits: Optional[Dict[str, str]] = None
     if source.split_spec_file and Path(source.split_spec_file).exists():
         custom_splits = _load_split_spec(source.split_spec_file)
         log.info(
             "Loaded custom split spec from %s (%d entries)",
-            source.split_spec_file, len(custom_splits),
+            source.split_spec_file,
+            len(custom_splits),
         )
 
-    video_index = _build_video_index(video_dir, log)
-    log.info("Discovered %d video files under %s", len(video_index), video_dir)
+    sample_groups = _discover_video_groups(video_dir, log)
+    if not sample_groups:
+        raise FileNotFoundError(
+            f"No CSL video files found under {video_dir}. "
+            "Expected video clips after validation/materialization."
+        )
 
     rows: List[Dict] = []
-    missing_videos = 0
+    for sentence_id in sorted(sample_groups):
+        sample_paths = sorted(
+            sample_groups[sentence_id],
+            key=lambda path: str(path.relative_to(video_dir)).lower(),
+        )
+        sentence_text = text_lookup.get(sentence_id, "")
+        if sentence_id not in text_lookup:
+            log.warning("No corpus text found for CSL sentence_id=%s", sentence_id)
 
-    for _, corpus_row in corpus.iterrows():
-        sentence_id = int(corpus_row["sentence_id"])
-        signer_id = int(corpus_row["signer_id"])
-        text = str(corpus_row.get("text", ""))
-
-        matches = _find_videos(video_index, signer_id, sentence_id, video_dir)
-        if not matches:
-            matches = [("", 0)]
-            missing_videos += 1
-
-        for rel_path, variation_id in matches:
-            sample_id = f"{signer_id:03d}_{sentence_id:03d}_{variation_id:02d}"
-
-            if custom_splits is not None:
-                split_label = custom_splits.get(sample_id, "unknown")
-            else:
-                split_label = _assign_split(signer_id, sentence_id, source.protocol)
+        for ordinal, sample_path in enumerate(sample_paths):
+            rel_path = str(sample_path.relative_to(video_dir)).replace("\\", "/")
+            signer_id, variation_id = _infer_signer_and_variation(
+                sample_path,
+                ordinal,
+            )
+            sample_id = f"{sentence_id:06d}_{signer_id:02d}_{variation_id:02d}"
+            split_label = _resolve_split_label(
+                custom_splits=custom_splits,
+                sample_id=sample_id,
+                rel_path=rel_path,
+                sample_path=sample_path,
+                signer_id=signer_id,
+                sentence_id=sentence_id,
+                protocol=source.protocol,
+                sentence_base=sentence_base,
+            )
 
             rows.append({
                 "SAMPLE_ID": sample_id,
                 "VIDEO_ID": sample_id,
                 "REL_PATH": rel_path,
                 "SPLIT": split_label,
-                "TEXT": text,
+                "START": 0.0,
+                "END": get_video_duration(str(sample_path)),
+                "TEXT": sentence_text,
                 "SIGNER_ID": str(signer_id),
                 "LANGUAGE": "zh",
-                "FPS": DEFAULT_FPS,
+                "FPS": get_video_fps(str(sample_path)) or source.video_fps or DEFAULT_FPS,
+                "VARIATION_ID": variation_id,
             })
 
-    if missing_videos:
-        log.warning(
-            "%d corpus entries had no matching video file in %s.",
-            missing_videos, video_dir,
-        )
-
     if not rows:
-        raise RuntimeError("CSL build_manifest produced no rows. Check corpus file and video directory.")
+        raise RuntimeError("CSL build_manifest produced no rows. Check corpus and video layout.")
 
     df = pd.DataFrame(rows)
 
@@ -111,17 +130,18 @@ def build(config, source: CSLSourceConfig, log: logging.Logger) -> pd.DataFrame:
 
     df = apply_availability_policy_paths(
         df,
-        base_dir=release_dir,
+        base_dir=video_dir,
         policy=source.availability_policy,
         rel_path_col="REL_PATH",
     )
 
     canonical_columns = [
         "SAMPLE_ID", "VIDEO_ID", "REL_PATH", "SPLIT",
-        "TEXT", "SIGNER_ID", "LANGUAGE", "FPS",
+        "START", "END", "TEXT", "SIGNER_ID",
+        "LANGUAGE", "FPS", "VARIATION_ID",
     ]
-    ordered = [c for c in canonical_columns if c in df.columns]
-    extra = [c for c in df.columns if c not in ordered]
+    ordered = [column for column in canonical_columns if column in df.columns]
+    extra = [column for column in df.columns if column not in ordered]
     df = df[ordered + extra]
 
     os.makedirs(os.path.dirname(manifest_path) or ".", exist_ok=True)
@@ -131,126 +151,132 @@ def build(config, source: CSLSourceConfig, log: logging.Logger) -> pd.DataFrame:
 
 def _parse_corpus(corpus_path: Path, log: logging.Logger) -> pd.DataFrame:
     raw_lines = corpus_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    data_lines = [l for l in raw_lines if l.strip() and not l.startswith("#")]
+    data_lines = [line for line in raw_lines if line.strip() and not line.startswith("#")]
     if not data_lines:
         return pd.DataFrame()
-
-    sample = data_lines[0]
-    delimiter = "\t" if "\t" in sample else None
 
     rows = []
     skipped = 0
     for line in data_lines:
-        parts = line.split(delimiter) if delimiter else line.split()
-        parts = [p.strip() for p in parts if p.strip()]
+        parts = line.split("\t") if "\t" in line else line.split()
+        parts = [part.strip() for part in parts if part.strip()]
         if len(parts) < 2:
             skipped += 1
             continue
+
         try:
             sentence_id = int(parts[0])
         except ValueError:
             skipped += 1
             continue
 
-        if len(parts) == 2:
-            signer_id = 0
-            text = parts[1]
-        elif len(parts) >= 3:
-            try:
-                signer_id = int(parts[1])
-                text = " ".join(parts[2:])
-            except ValueError:
-                signer_id = 0
-                text = " ".join(parts[1:])
+        if len(parts) >= 3 and parts[1].isdigit():
+            text = " ".join(parts[2:])
         else:
-            skipped += 1
-            continue
+            text = " ".join(parts[1:])
 
-        rows.append({"sentence_id": sentence_id, "signer_id": signer_id, "text": text})
+        rows.append({"sentence_id": sentence_id, "text": text})
 
     if skipped:
-        log.warning("Skipped %d malformed lines in corpus file %s.", skipped, corpus_path)
+        log.warning("Skipped %d malformed CSL corpus lines in %s", skipped, corpus_path)
 
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 
-def _build_video_index(
-    video_dir: Path,
-    log: logging.Logger,
-) -> Dict[Tuple[int, int], List[Tuple[str, int]]]:
-    index: Dict[Tuple[int, int], List[Tuple[str, int]]] = {}
-    video_dir_parent = video_dir.parent
-
-    for ext in VIDEO_EXTENSIONS:
-        for vpath in video_dir.rglob(f"*{ext}"):
-            stem = vpath.stem
-            parts = stem.split("_")
-            rel_path = str(vpath.relative_to(video_dir_parent))
-
-            signer_id = sentence_id = None
-            variation_id = 0
-
-            if len(parts) >= 3:
-                try:
-                    signer_id = int(parts[0])
-                    sentence_id = int(parts[1])
-                    variation_id = int(parts[2])
-                except ValueError:
-                    signer_id = sentence_id = None
-
-            if signer_id is None and len(parts) == 2:
-                try:
-                    signer_id = int(parts[0])
-                    sentence_id = int(parts[1])
-                except ValueError:
-                    pass
-
-            if signer_id is None and len(parts) == 1:
-                try:
-                    sentence_id = int(parts[0])
-                    signer_id = 0
-                except ValueError:
-                    pass
-
-            if signer_id is None or sentence_id is None:
-                log.debug("Could not parse signer/sentence from filename: %s", vpath.name)
-                continue
-
-            index.setdefault((signer_id, sentence_id), []).append((rel_path, variation_id))
-
-    return index
+def _discover_video_groups(video_dir: Path, log: logging.Logger) -> Dict[int, List[Path]]:
+    grouped: Dict[int, List[Path]] = defaultdict(list)
+    for path in sorted(video_dir.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in VIDEO_EXTENSIONS:
+            continue
+        sentence_id = _infer_sentence_id(path, video_dir)
+        if sentence_id is None:
+            log.debug("Skipping CSL video with unparseable sentence id: %s", path)
+            continue
+        grouped[sentence_id].append(path)
+    return grouped
 
 
-def _find_videos(
-    video_index: Dict,
+def _infer_sentence_id(path: Path, video_dir: Path) -> Optional[int]:
+    relative = path.relative_to(video_dir)
+    for part in relative.parts[:-1]:
+        if part.isdigit():
+            return int(part)
+
+    match = re.search(r"(\d{1,6})", path.stem)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _infer_signer_and_variation(path: Path, ordinal: int) -> tuple[int, int]:
+    numbers = [int(token) for token in re.findall(r"\d+", path.stem)]
+    if len(numbers) >= 2:
+        signer_id = numbers[-2]
+        variation_id = numbers[-1]
+
+        if signer_id == 0:
+            signer_id = 1
+        if variation_id == 0:
+            variation_id = 1
+
+        if signer_id > 0 and variation_id > 0:
+            return signer_id, variation_id
+
+    signer_id = ordinal // REPETITIONS_PER_SIGNER + 1
+    variation_id = ordinal % REPETITIONS_PER_SIGNER + 1
+    return signer_id, variation_id
+
+
+def _resolve_split_label(
+    *,
+    custom_splits: Optional[Dict[str, str]],
+    sample_id: str,
+    rel_path: str,
+    sample_path: Path,
     signer_id: int,
     sentence_id: int,
-    video_dir: Path,
-) -> List[Tuple[str, int]]:
-    if signer_id != 0:
-        return video_index.get((signer_id, sentence_id), [])
-    results = []
-    for (s_id, sent_id), entries in video_index.items():
-        if sent_id == sentence_id:
-            results.extend(entries)
-    return results
+    protocol: str,
+    sentence_base: int,
+) -> str:
+    if custom_splits is not None:
+        for key in (sample_id, sample_path.stem, rel_path):
+            if key in custom_splits:
+                return custom_splits[key]
+        return "unknown"
+
+    return _assign_split(
+        signer_id=signer_id,
+        sentence_id=sentence_id,
+        protocol=protocol,
+        sentence_base=sentence_base,
+    )
 
 
-def _assign_split(signer_id: int, sentence_id: int, protocol: str) -> str:
+def _assign_split(
+    *,
+    signer_id: int,
+    sentence_id: int,
+    protocol: str,
+    sentence_base: int,
+) -> str:
     if protocol == "split_i":
         if signer_id in SPLIT_I_TRAIN_SIGNERS:
             return "train"
         if signer_id in SPLIT_I_TEST_SIGNERS:
             return "test"
         return "unknown"
+
     if protocol == "split_ii":
-        if sentence_id in SPLIT_II_TRAIN_SENTENCES:
+        normalized_sentence_id = sentence_id + 1 if sentence_base == 0 else sentence_id
+        if normalized_sentence_id in SPLIT_II_TRAIN_SENTENCES:
             return "train"
-        if sentence_id in SPLIT_II_TEST_SENTENCES:
+        if normalized_sentence_id in SPLIT_II_TEST_SENTENCES:
             return "test"
         return "unknown"
+
     raise ValueError(
-        f"Unknown CSL split protocol: {protocol!r}. Valid options: 'split_i', 'split_ii'."
+        f"Unknown CSL split protocol: {protocol!r}. "
+        "Valid options: 'split_i', 'split_ii'."
     )
 
 
