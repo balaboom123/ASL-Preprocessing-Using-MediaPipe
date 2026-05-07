@@ -104,7 +104,7 @@ def build(config, source: CSLSourceConfig, log: logging.Logger) -> pd.DataFrame:
             else:
                 variation_counts[signer_id] += 1
                 variation_id = variation_counts[signer_id]
-            sample_id = f"{sentence_id:06d}_{signer_id:02d}_{variation_id:02d}"
+            sample_id = f"{signer_id:03d}_{sentence_id:03d}_{variation_id:02d}"
             split_label = _resolve_split_label(
                 custom_splits=custom_splits,
                 sample_id=sample_id,

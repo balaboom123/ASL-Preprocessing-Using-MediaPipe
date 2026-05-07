@@ -406,9 +406,9 @@ class TestCSLBuildManifest:
 
         df = context.manifest_df
         assert list(df["SAMPLE_ID"]) == [
-            "000000_01_01",
-            "000000_41_02",
-            "000001_02_01",
+            "001_000_01",
+            "041_000_02",
+            "002_001_01",
         ]
         assert list(df["SPLIT"]) == ["train", "test", "train"]
         assert list(df["START"]) == [0.0, 0.0, 0.0]
@@ -447,7 +447,7 @@ class TestCSLBuildManifest:
         _write_corpus(release_dir / "corpus.txt", [("000000", "你好")])
         _touch_video(release_dir / "color" / "000000" / "sample_01_01.mp4")
         split_spec = tmp_path / "split_spec.tsv"
-        split_spec.write_text("000000_01_01\ttest\n", encoding="utf-8")
+        split_spec.write_text("001_000_01\ttest\n", encoding="utf-8")
 
         monkeypatch.setattr(csl_manifest, "get_video_duration", lambda _: 1.0)
         monkeypatch.setattr(csl_manifest, "get_video_fps", lambda _: 30.0)
@@ -493,7 +493,7 @@ class TestCSLBuildManifest:
         df = context.manifest_df
         assert context.videos_dir == rgb_dir
         assert list(df["REL_PATH"]) == ["000000/sample_01_01.mp4"]
-        assert list(df["SAMPLE_ID"]) == ["000000_01_01"]
+        assert list(df["SAMPLE_ID"]) == ["001_000_01"]
 
     def test_build_manifest_uses_single_signer_token_filenames(
         self, tmp_path, monkeypatch
@@ -518,8 +518,8 @@ class TestCSLBuildManifest:
 
         df = context.manifest_df.sort_values("SAMPLE_ID").reset_index(drop=True)
         assert list(df["SAMPLE_ID"]) == [
-            "000000_01_01",
-            "000000_41_01",
+            "001_000_01",
+            "041_000_01",
         ]
         assert list(df["SIGNER_ID"]) == ["1", "41"]
         assert list(df["SPLIT"]) == ["train", "test"]
@@ -547,8 +547,8 @@ class TestCSLBuildManifest:
 
         df = context.manifest_df.sort_values("REL_PATH").reset_index(drop=True)
         assert list(df["SAMPLE_ID"]) == [
-            "000000_01_01",
-            "000000_01_02",
+            "001_000_01",
+            "001_000_02",
         ]
         assert list(df["VARIATION_ID"]) == [1, 2]
 
@@ -575,8 +575,8 @@ class TestCSLBuildManifest:
 
         df = context.manifest_df.sort_values("REL_PATH").reset_index(drop=True)
         assert list(df["SAMPLE_ID"]) == [
-            "000000_01_02",
-            "000000_01_03",
+            "001_000_02",
+            "001_000_03",
         ]
 
     def test_build_manifest_falls_back_for_non_numeric_sample_names(
@@ -602,8 +602,8 @@ class TestCSLBuildManifest:
 
         df = context.manifest_df.sort_values("REL_PATH").reset_index(drop=True)
         assert list(df["SAMPLE_ID"]) == [
-            "000000_01_01",
-            "000000_01_02",
+            "001_000_01",
+            "001_000_02",
         ]
         assert list(df["VARIATION_ID"]) == [1, 2]
 
@@ -628,6 +628,6 @@ class TestCSLBuildManifest:
         context = CSLDataset().build_manifest(cfg, context)
 
         df = context.manifest_df
-        assert list(df["SAMPLE_ID"]) == ["000000_01_01"]
+        assert list(df["SAMPLE_ID"]) == ["001_000_01"]
         assert list(df["SIGNER_ID"]) == ["1"]
         assert list(df["VARIATION_ID"]) == [1]
