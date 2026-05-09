@@ -48,6 +48,58 @@ python -m signdata run configs/jobs/how2sign/video.yaml
 The How2Sign dataset adapter uses `dataset.download` as a validation step for
 local files; it does not fetch remote data.
 
+## BOBSL
+
+Broadcast BSL corpus released with subtitle-aligned interpreter videos and manual isolated-sign annotations ([Albanie et al., ICCV 2021](https://arxiv.org/abs/2111.03635)).
+
+**Default pose job:** `dataset.download (local validation) → dataset.manifest → processing.video2pose → post_processing.normalize → output.webdataset`
+
+```bash
+python -m signdata run configs/jobs/bobsl/mediapipe.yaml
+```
+
+**Default video job:** `dataset.download (local validation) → dataset.manifest → processing.video2crop → output.webdataset`
+
+```bash
+python -m signdata run configs/jobs/bobsl/video.yaml
+```
+
+**Setup:**
+1. Download and unpack the public BOBSL release under `dataset/bobsl/`, or override `dataset.source.release_dir`.
+2. Place interpreter-cropped MP4s under `paths.videos` (the shipped jobs use `dataset/bobsl/videos/`).
+3. Keep the release metadata JSON (for example `metadata/subset2episode.json`) under the release root, or override `dataset.source.metadata_file`.
+4. Keep subtitle files under the release root. The adapter auto-discovers the common `subtitles/manually-aligned/` and `subtitles/audio-aligned-heuristic-correction/` layouts, or you can override `dataset.source.subtitles_root`.
+5. Keep manual isolated-sign annotations under the release root. The adapter auto-discovers common `annotations/` layouts, or you can override `dataset.source.annotation_root`.
+
+The BOBSL adapter exposes two manifest views:
+
+- `dataset.source.view=subtitle_slt` builds one row per subtitle segment with `TEXT`, `START`, and `END`.
+- `dataset.source.view=isolated_signs` builds one row per manual isolated-sign annotation with `GLOSS`, `TEXT`, `CLASS_ID`, `START`, and `END`.
+
+Available BOBSL-specific overrides:
+
+- `dataset.source.subtitle_alignment=manual|original` chooses between manually aligned subtitles and the original/audio-aligned subtitle release.
+- `dataset.source.split=train|val|test|challenge|all` filters the selected release partition.
+- `dataset.source.metadata_file`, `subtitles_root`, and `annotation_root` let you point at repackaged local layouts when auto-discovery is not enough.
+
+## BSL-1K
+
+Compatibility lexical view built from the public BOBSL release rather than a separate downloader ([BSL-1K project page](https://www.robots.ox.ac.uk/~vgg/research/bsl1k/)).
+
+**Default pose job:** `dataset.download (local validation) → dataset.manifest → processing.video2pose → post_processing.normalize → output.webdataset`
+
+```bash
+python -m signdata run configs/jobs/bsl1k/mediapipe.yaml
+```
+
+**Default video job:** `dataset.download (local validation) → dataset.manifest → processing.video2crop → output.webdataset`
+
+```bash
+python -m signdata run configs/jobs/bsl1k/video.yaml
+```
+
+The shipped BSL-1K configs reuse `dataset.source.release_dir: dataset/bobsl` and force `dataset.source.view: isolated_signs`, so outputs are organized under `dataset/bsl1k/` while the raw release stays under `dataset/bobsl/`.
+
 ## WLASL
 
 Word-level ASL dataset with 2,000 glosses and 12,000+ isolated sign videos ([Li et al., WACV 2020](https://dxli94.github.io/WLASL/)).

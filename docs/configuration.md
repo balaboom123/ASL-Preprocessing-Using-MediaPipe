@@ -137,7 +137,10 @@ If omitted, the loader derives these defaults from `paths.root`:
 |---|---|---|---|
 | `video_ids_file` | `str` | `""` | Video ID list for YouTube-style datasets |
 | `annotations_dir` | `str` | `""` | Directory containing MS-ASL JSON annotation files |
+| `metadata_file` | `str` | `""` | Optional explicit BOBSL metadata JSON path when `subset2episode.json` is not stored in the default release location |
 | `metadata_json` | `str` | `""` | Canonical WLASL metadata JSON path (`annotation_json` is accepted as a compatibility alias) |
+| `annotation_root` | `str` | `""` | Optional explicit BOBSL isolated-sign annotation path or directory |
+| `subtitles_root` | `str` | `""` | Optional explicit BOBSL subtitle directory |
 | `release_dir` | `str` | `""` | Local dataset release root for manually downloaded datasets such as AUTSL, LSA64, CSL, and RWTH-PHOENIX-Weather |
 | `variant` | `str` | adapter defaults | Dataset release variant such as `cut`, `raw`, or corpus-specific release names |
 | `modality` | `str` | adapter defaults | Input modality selector for datasets with paired files such as AUTSL (`rgb` or `depth`) |
@@ -157,6 +160,8 @@ If omitted, the loader derives these defaults from `paths.root`:
 | `max_duration` | `float` | `60.0` | Max segment duration |
 | `manifest_csv` | `str` | `""` | Existing manifest path for datasets such as How2Sign |
 | `split` | `str` | `"all"` | Split label for datasets such as How2Sign, WLASL, MS-ASL, and AUTSL |
+| `view` | `str` | adapter defaults | Dataset view selector for multi-view releases such as BOBSL (`subtitle_slt` or `isolated_signs`) |
+| `subtitle_alignment` | `str` | adapter defaults | Subtitle alignment choice for BOBSL (`manual` or `original`) |
 | `split_strategy` | `str` | adapter defaults | Split assignment policy for datasets such as LSA64 |
 | `protocol` | `str` | adapter defaults | Evaluation protocol name for datasets such as CSL (`split_i` or `split_ii`) |
 | `rgb_subdir` | `str` | adapter defaults | Relative RGB data directory inside a local release such as CSL |
@@ -173,7 +178,8 @@ If omitted, the loader derives these defaults from `paths.root`:
 Relative file paths in `dataset.source`, such as `video_ids_file`, `manifest_csv`,
 `annotations_dir`, `metadata_json`, `annotation_json`, `release_dir`, `class_map_file`,
 `class_id_file`, `train_labels_file`, `val_labels_file`, `test_labels_file`,
-`corpus_file`, and `split_spec_file`, are resolved from the project root.
+`corpus_file`, `split_spec_file`, `metadata_file`, `annotation_root`, and
+`subtitles_root`, are resolved from the project root.
 
 ## `processing`
 

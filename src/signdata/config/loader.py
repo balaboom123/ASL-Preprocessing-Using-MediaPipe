@@ -123,6 +123,32 @@ RESOURCE_CONFIG_ROOTS = {
     "det_model_config": ("resources", "detection_models"),
 }
 RESOURCE_CHECKPOINT_ATTRS = {"pose_model_checkpoint", "det_model_checkpoint"}
+SOURCE_PATH_KEYS = {
+    "video_ids_file",
+    "manifest_tsv",
+    "manifest_csv",
+    "release_dir",
+    "class_map_file",
+    "annotations_csv",
+    "annotations_dir",
+    "metadata_json",
+    "annotation_json",
+    "bbox_json",
+    "corpus_file",
+    "split_spec_file",
+    "class_id_file",
+    "train_labels_file",
+    "val_labels_file",
+    "test_labels_file",
+}
+SOURCE_PATH_SUFFIXES = (
+    "_file",
+    "_dir",
+    "_root",
+    "_json",
+    "_csv",
+    "_tsv",
+)
 
 
 def _alternate_package_dirs(path: Path) -> List[Path]:
@@ -227,6 +253,11 @@ def _find_project_root(config_dir: Path) -> Path:
     return config_dir
 
 
+def _is_source_path_key(source_key: str) -> bool:
+    """Return True when *source_key* should resolve relative to project root."""
+    return source_key in SOURCE_PATH_KEYS or source_key.endswith(SOURCE_PATH_SUFFIXES)
+
+
 def resolve_paths(config: Config, project_root: Path) -> Config:
     """Resolve relative paths to absolute paths based on project root."""
     paths = config.paths
@@ -267,15 +298,8 @@ def resolve_paths(config: Config, project_root: Path) -> Config:
 
     # Resolve source paths relative to project root
     source = config.dataset.source
-    for source_key in (
-        "video_ids_file", "manifest_tsv", "manifest_csv",
-        "release_dir", "class_map_file", "annotations_csv",
-        "annotations_dir", "metadata_json", "annotation_json", "bbox_json",
-        "corpus_file", "split_spec_file", "class_id_file",
-        "train_labels_file", "val_labels_file", "test_labels_file",
-    ):
-        val = source.get(source_key, "")
-        if val:
+    for source_key, val in list(source.items()):
+        if _is_source_path_key(source_key) and isinstance(val, str) and val:
             config.dataset.source[source_key] = str(_resolve_path(val, project_root))
 
     # Resolve model paths in detection_config and pose_config

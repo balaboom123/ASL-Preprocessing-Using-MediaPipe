@@ -20,6 +20,8 @@ from .rwth_phoenix_weather import RWTHPhoenixWeatherDataset
 from .wlasl import WLASLDataset
 from .csl import CSLDataset
 from .msasl import MSASLDataset
+from .bobsl import BOBSLDataset
+from .bsl1k import BSL1KDataset
 
 __all__ = [
     "DatasetAdapter",
@@ -34,4 +36,6 @@ __all__ = [
     "WLASLDataset",
     "CSLDataset",
     "MSASLDataset",
+    "BOBSLDataset",
+    "BSL1KDataset",
 ]
