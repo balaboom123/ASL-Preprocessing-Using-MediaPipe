@@ -79,7 +79,7 @@ The BOBSL adapter exposes two manifest views:
 Available BOBSL-specific overrides:
 
 - `dataset.source.subtitle_alignment=manual|original` chooses between manually aligned subtitles and the original/audio-aligned subtitle release.
-- `dataset.source.split=train|val|test|challenge|all` filters the selected release partition.
+- `dataset.source.split=train|val|test|all` filters the selected release partition.
 - `dataset.source.metadata_file`, `subtitles_root`, and `annotation_root` let you point at repackaged local layouts when auto-discovery is not enough.
 
 ## BSL-1K
@@ -98,7 +98,7 @@ python -m signdata run configs/jobs/bsl1k/mediapipe.yaml
 python -m signdata run configs/jobs/bsl1k/video.yaml
 ```
 
-The shipped BSL-1K configs reuse `dataset.source.release_dir: dataset/bobsl` and force `dataset.source.view: isolated_signs`, so outputs are organized under `dataset/bsl1k/` while the raw release stays under `dataset/bobsl/`.
+The shipped BSL-1K configs reuse `dataset.source.release_dir: dataset/bobsl` and force `dataset.source.view: isolated_signs`, so outputs are organized under `dataset/bsl1k/` while the raw release and default video root stay under `dataset/bobsl/`.
 
 ## WLASL
 

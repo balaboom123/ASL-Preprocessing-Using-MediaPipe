@@ -16,11 +16,19 @@ class BOBSLDataset(DatasetAdapter):
 
     @classmethod
     def validate_config(cls, config) -> None:
-        source = config.dataset.source
-        if not source.get("release_dir"):
+        source = _source.get_source_config(config)
+        if not source.release_dir:
             raise ValueError(
                 "bobsl requires dataset.source.release_dir pointing to the "
                 "downloaded BOBSL release root."
+            )
+        if source.split == "challenge" and (
+            config.dataset.download or config.dataset.manifest
+        ):
+            raise ValueError(
+                "The public BOBSL challenge partition does not include the "
+                "subtitle or isolated-sign annotation files required by the "
+                "current local-validation and manifest-building workflows."
             )
 
     def get_source_config(self, config) -> _source.BOBSLSourceConfig:

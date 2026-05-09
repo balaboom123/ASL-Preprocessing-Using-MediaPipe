@@ -115,6 +115,41 @@ class TestBSL1KValidateConfig:
         with pytest.raises(ValueError, match="isolated_signs"):
             BSL1KDataset.validate_config(cfg)
 
+    def test_implicit_default_videos_dir_is_rewritten_to_bobsl_release(self, tmp_path):
+        release_dir = tmp_path / "bobsl-release"
+        cfg = Config(
+            dataset={
+                "name": "bsl1k",
+                "source": {"release_dir": str(release_dir)},
+            },
+            paths={
+                "root": str(tmp_path / "dataset" / "bsl1k"),
+                "videos": str(tmp_path / "dataset" / "bsl1k" / "videos"),
+            },
+        )
+
+        BSL1KDataset.validate_config(cfg)
+
+        assert cfg.paths.videos == str(release_dir / "videos")
+
+    def test_explicit_videos_dir_override_is_preserved(self, tmp_path):
+        release_dir = tmp_path / "bobsl-release"
+        explicit_videos = tmp_path / "custom-videos"
+        cfg = Config(
+            dataset={
+                "name": "bsl1k",
+                "source": {"release_dir": str(release_dir)},
+            },
+            paths={
+                "root": str(tmp_path / "dataset" / "bsl1k"),
+                "videos": str(explicit_videos),
+            },
+        )
+
+        BSL1KDataset.validate_config(cfg)
+
+        assert cfg.paths.videos == str(explicit_videos)
+
 
 class TestBSL1KSourceConfig:
     def test_defaults_to_isolated_sign_view(self, tmp_path):

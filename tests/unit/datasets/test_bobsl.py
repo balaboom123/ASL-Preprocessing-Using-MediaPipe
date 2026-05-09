@@ -148,6 +148,21 @@ class TestBOBSLValidateConfig:
         with pytest.raises(ValueError, match="release_dir"):
             BOBSLDataset.validate_config(cfg)
 
+    @pytest.mark.parametrize("view", ["subtitle_slt", "isolated_signs"])
+    def test_challenge_split_is_rejected_for_supported_views(self, tmp_path, view):
+        cfg = Config(
+            dataset={
+                "name": "bobsl",
+                "source": {
+                    "release_dir": str(tmp_path),
+                    "view": view,
+                    "split": "challenge",
+                },
+            },
+        )
+        with pytest.raises(ValueError, match="challenge partition"):
+            BOBSLDataset.validate_config(cfg)
+
 
 class TestBOBSLSourceConfig:
     def test_defaults(self, tmp_path):

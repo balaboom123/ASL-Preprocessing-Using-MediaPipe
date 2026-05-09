@@ -616,6 +616,16 @@ class TestLoadConfig:
         assert cfg.processing.processor == "video2crop"
         assert cfg.processing.detection == "yolo"
 
+    def test_load_bsl1k_base_config_uses_bobsl_videos(self, project_root):
+        import signdata.datasets
+
+        yaml_path = str(project_root / "configs" / "base" / "datasets" / "bsl1k.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "bsl1k"
+        assert cfg.dataset.source["release_dir"] == str(project_root / "dataset" / "bobsl")
+        assert cfg.paths.videos == str(project_root / "dataset" / "bobsl" / "videos")
+
     def test_load_lsa64_requires_explicit_release_dir_or_paths_videos(self, tmp_path):
         import signdata.datasets
 
