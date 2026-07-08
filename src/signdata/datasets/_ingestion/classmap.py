@@ -52,7 +52,12 @@ def load_class_map(
     if not path.exists():
         raise FileNotFoundError(f"Class map file not found: {path}")
 
-    df = pd.read_csv(path, delimiter=delimiter)
+    df = pd.read_csv(
+        path,
+        delimiter=delimiter,
+        keep_default_na=False,
+        na_values=[""],
+    )
 
     required = {id_column, gloss_column}
     missing = required - set(df.columns)

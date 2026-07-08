@@ -222,6 +222,82 @@ class TestResolvePaths:
             project_root / "dataset" / "msasl" / "annotations"
         )
 
+    def test_autsl_optional_source_files_relative_resolved(self):
+        cfg = Config(
+            dataset={
+                "name": "test",
+                "source": {
+                    "class_id_file": "dataset/autsl/SignList_ClassId_TR_EN.csv",
+                    "train_labels_file": "dataset/autsl/train_labels.csv",
+                    "val_labels_file": "dataset/autsl/val_labels.csv",
+                    "test_labels_file": "dataset/autsl/test_labels.csv",
+                },
+            },
+        )
+        project_root = Path("/proj")
+        cfg = resolve_paths(cfg, project_root)
+        assert cfg.dataset.source["class_id_file"] == str(
+            project_root / "dataset" / "autsl" / "SignList_ClassId_TR_EN.csv"
+        )
+        assert cfg.dataset.source["train_labels_file"] == str(
+            project_root / "dataset" / "autsl" / "train_labels.csv"
+        )
+        assert cfg.dataset.source["val_labels_file"] == str(
+            project_root / "dataset" / "autsl" / "val_labels.csv"
+        )
+        assert cfg.dataset.source["test_labels_file"] == str(
+            project_root / "dataset" / "autsl" / "test_labels.csv"
+        )
+
+    def test_corpus_file_relative_resolved(self):
+        cfg = Config(
+            dataset={
+                "name": "test",
+                "source": {"corpus_file": "dataset/csl/corpus.txt"},
+            },
+        )
+        project_root = Path("/proj")
+        cfg = resolve_paths(cfg, project_root)
+        assert cfg.dataset.source["corpus_file"] == str(
+            project_root / "dataset" / "csl" / "corpus.txt"
+        )
+
+    def test_split_spec_file_relative_resolved(self):
+        cfg = Config(
+            dataset={
+                "name": "test",
+                "source": {"split_spec_file": "dataset/csl/splits.tsv"},
+            },
+        )
+        project_root = Path("/proj")
+        cfg = resolve_paths(cfg, project_root)
+        assert cfg.dataset.source["split_spec_file"] == str(
+            project_root / "dataset" / "csl" / "splits.tsv"
+        )
+
+    def test_generic_source_path_suffixes_relative_resolved(self):
+        cfg = Config(
+            dataset={
+                "name": "test",
+                "source": {
+                    "metadata_file": "dataset/bobsl/metadata/subset2episode.json",
+                    "annotation_root": "dataset/bobsl/annotations",
+                    "subtitles_root": "dataset/bobsl/subtitles/manually-aligned",
+                },
+            },
+        )
+        project_root = Path("/proj")
+        cfg = resolve_paths(cfg, project_root)
+        assert cfg.dataset.source["metadata_file"] == str(
+            project_root / "dataset" / "bobsl" / "metadata" / "subset2episode.json"
+        )
+        assert cfg.dataset.source["annotation_root"] == str(
+            project_root / "dataset" / "bobsl" / "annotations"
+        )
+        assert cfg.dataset.source["subtitles_root"] == str(
+            project_root / "dataset" / "bobsl" / "subtitles" / "manually-aligned"
+        )
+
     def test_detection_model_paths_resolved(self):
         """processing.detection_config model paths resolve relative to project root."""
         cfg = Config(
@@ -375,6 +451,210 @@ class TestLoadConfig:
         assert cfg.dataset.name == "msasl"
         assert cfg.processing.processor == "video2crop"
         assert cfg.processing.detection == "yolo"
+
+    def test_load_autsl_pose_mediapipe(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "autsl" / "mediapipe.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "autsl"
+        assert cfg.dataset.source["release_dir"] == str(project_root / "dataset" / "autsl")
+        assert cfg.dataset.source["variant"] == "challenge_2021"
+        assert cfg.dataset.source["modality"] == "rgb"
+        assert cfg.dataset.source["allow_unlabeled"] is False
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.pose == "mediapipe"
+        assert cfg.paths.videos == str(project_root / "dataset" / "autsl")
+
+    def test_load_autsl_pose_mmpose(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "autsl" / "mmpose.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "autsl"
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.detection == "mmdet"
+        assert cfg.processing.pose == "mmpose"
+
+    def test_load_autsl_video_yolo(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "autsl" / "video.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "autsl"
+        assert cfg.processing.processor == "video2crop"
+        assert cfg.processing.detection == "yolo"
+
+    def test_load_lsa64_pose_mediapipe(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "lsa64" / "mediapipe.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "lsa64"
+        assert cfg.dataset.source["release_dir"] == str(
+            project_root / "dataset" / "lsa64"
+        )
+        assert cfg.dataset.source["variant"] == "cut"
+        assert cfg.dataset.source["split_strategy"] == "none"
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.pose == "mediapipe"
+
+    def test_load_lsa64_pose_mmpose(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "lsa64" / "mmpose.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "lsa64"
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.detection == "mmdet"
+        assert cfg.processing.pose == "mmpose"
+
+    def test_load_lsa64_video_yolo(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "lsa64" / "video.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "lsa64"
+        assert cfg.processing.processor == "video2crop"
+        assert cfg.processing.detection == "yolo"
+
+    def test_load_csl_pose_mediapipe(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "csl" / "mediapipe.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "csl"
+        assert cfg.dataset.source["release_dir"] == str(project_root / "dataset" / "csl")
+        assert cfg.dataset.source["variant"] == "continuous_2015"
+        assert cfg.dataset.source["prepare_mode"] == "materialize_missing"
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.pose == "mediapipe"
+
+    def test_load_csl_pose_mmpose(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "csl" / "mmpose.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "csl"
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.detection == "mmdet"
+        assert cfg.processing.pose == "mmpose"
+
+    def test_load_csl_video_yolo(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "csl" / "video.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "csl"
+        assert cfg.processing.processor == "video2crop"
+        assert cfg.processing.detection == "yolo"
+
+    def test_load_bobsl_pose_mediapipe(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "bobsl" / "mediapipe.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "bobsl"
+        assert cfg.dataset.source["release_dir"] == str(project_root / "dataset" / "bobsl")
+        assert cfg.dataset.source["view"] == "subtitle_slt"
+        assert cfg.dataset.source["subtitle_alignment"] == "manual"
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.pose == "mediapipe"
+
+    def test_load_bobsl_video_yolo(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "bobsl" / "video.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "bobsl"
+        assert cfg.processing.processor == "video2crop"
+        assert cfg.processing.detection == "yolo"
+
+    def test_load_bsl1k_pose_mediapipe(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "bsl1k" / "mediapipe.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "bsl1k"
+        assert cfg.dataset.source["release_dir"] == str(project_root / "dataset" / "bobsl")
+        assert cfg.dataset.source["view"] == "isolated_signs"
+        assert cfg.processing.processor == "video2pose"
+        assert cfg.processing.pose == "mediapipe"
+
+    def test_load_bsl1k_video_yolo(self, project_root):
+        import signdata.datasets
+        import signdata.processors
+
+        yaml_path = str(project_root / "configs" / "jobs" / "bsl1k" / "video.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "bsl1k"
+        assert cfg.processing.processor == "video2crop"
+        assert cfg.processing.detection == "yolo"
+
+    def test_load_bsl1k_base_config_uses_bobsl_videos(self, project_root):
+        import signdata.datasets
+
+        yaml_path = str(project_root / "configs" / "base" / "datasets" / "bsl1k.yaml")
+        cfg = load_config(yaml_path)
+
+        assert cfg.dataset.name == "bsl1k"
+        assert cfg.dataset.source["release_dir"] == str(project_root / "dataset" / "bobsl")
+        assert cfg.paths.videos == str(project_root / "dataset" / "bobsl" / "videos")
+
+    def test_load_lsa64_requires_explicit_release_dir_or_paths_videos(self, tmp_path):
+        import signdata.datasets
+
+        yaml_path = tmp_path / "configs" / "jobs" / "lsa64.yaml"
+        yaml_path.parent.mkdir(parents=True)
+        yaml_path.write_text(yaml.dump({
+            "dataset": {"name": "lsa64"},
+            "processing": {"enabled": False},
+            "post_processing": {"enabled": False},
+            "output": {"enabled": False},
+        }))
+
+        with pytest.raises(ValueError, match="release_dir|paths\\.videos"):
+            load_config(str(yaml_path))
+
+    def test_load_autsl_requires_explicit_release_dir_or_paths_videos(self, tmp_path):
+        import signdata.datasets
+
+        yaml_path = tmp_path / "configs" / "jobs" / "autsl.yaml"
+        yaml_path.parent.mkdir(parents=True)
+        yaml_path.write_text(yaml.dump({
+            "dataset": {"name": "autsl"},
+            "processing": {"enabled": False},
+            "post_processing": {"enabled": False},
+            "output": {"enabled": False},
+        }))
+
+        with pytest.raises(ValueError, match="release_dir|paths\\.videos"):
+            load_config(str(yaml_path))
 
     def test_cli_overrides_apply(self, project_root):
         import signdata.datasets

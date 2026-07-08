@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterable, List, Literal, Optional, get_args
 
 import pandas as pd
 from pydantic import BaseModel
@@ -15,15 +15,17 @@ _BUNDLED_CLASS_MAP = (
 )
 
 DEFAULT_FPS = 60.0
+LSA64Variant = Literal["raw", "cut"]
+_KNOWN_VARIANTS = frozenset(get_args(LSA64Variant))
 
 
 class LSA64SourceConfig(BaseModel):
     """Typed config for LSA64 adapter."""
 
     release_dir: str = ""
-    variant: str = "cut"
-    split: str = "all"
-    split_strategy: str = "none"
+    variant: LSA64Variant = "cut"
+    split: Literal["all", "train", "val", "test"] = "all"
+    split_strategy: Literal["none", "community_signer_8_1_1"] = "none"
     train_signers: List[int] = [1, 2, 3, 4, 5, 6, 7, 8]
     val_signers: List[int] = [9]
     test_signers: List[int] = [10]
@@ -33,34 +35,131 @@ class LSA64SourceConfig(BaseModel):
 
 
 def get_source_config(config) -> LSA64SourceConfig:
-    return LSA64SourceConfig(**dict(config.dataset.source))
+    source_dict = dict(config.dataset.source)
+    if not source_dict.get("release_dir") and config.paths.videos:
+        source_dict["release_dir"] = config.paths.videos
+    return LSA64SourceConfig(**source_dict)
 
 
-def resolve_video_dir(config, source: LSA64SourceConfig) -> str:
-    if source.release_dir:
-        return source.release_dir
-    return config.paths.videos or ""
+def resolve_release_dir(config, source: LSA64SourceConfig) -> Optional[Path]:
+    raw = source.release_dir or (config.paths.videos or "")
+    return Path(raw) if str(raw).strip() else None
+
+
+def infer_variant_from_path(path: Path) -> Optional[str]:
+    name = path.name.lower()
+    return name if name in _KNOWN_VARIANTS else None
+
+
+def validate_variant_path_consistency(config, source: LSA64SourceConfig) -> None:
+    release_dir = resolve_release_dir(config, source)
+    if release_dir is None:
+        return
+
+    explicit_variant = infer_variant_from_path(release_dir)
+    if explicit_variant and explicit_variant != source.variant:
+        raise ValueError(
+            f"lsa64 variant={source.variant!r} conflicts with explicit "
+            f"directory {release_dir!s} (looks like variant {explicit_variant!r}). "
+            "Either point release_dir/paths.videos at the release root or "
+            "set dataset.source.variant to match the explicit directory."
+        )
+
+
+def resolve_video_dir(config, source: LSA64SourceConfig) -> Optional[Path]:
+    release_dir = resolve_release_dir(config, source)
+    if release_dir is None:
+        return release_dir
+
+    explicit_variant = infer_variant_from_path(release_dir)
+    if explicit_variant:
+        return release_dir
+
+    variant_dir = release_dir / source.variant
+    if variant_dir.is_dir():
+        return variant_dir
+
+    return release_dir
+
+
+def _pick_unique_variant(values: Iterable[str], source_label: str) -> Optional[str]:
+    cleaned = {v for v in (str(x).strip().lower() for x in values) if v}
+    if not cleaned:
+        return None
+    if len(cleaned) > 1:
+        raise ValueError(
+            f"LSA64 manifest has mixed {source_label} values: {sorted(cleaned)}"
+        )
+    return next(iter(cleaned))
+
+
+def infer_manifest_variant(df: pd.DataFrame) -> Optional[str]:
+    """Infer which LSA64 variant an existing manifest was built from."""
+    if "SOURCE_VARIANT" in df.columns:
+        raw_values = df["SOURCE_VARIANT"].dropna().astype(str).str.strip().str.lower()
+        raw_values = raw_values[raw_values != ""]
+        unknown = set(raw_values.unique()) - _KNOWN_VARIANTS
+        if unknown:
+            raise ValueError(
+                f"LSA64 manifest has unsupported SOURCE_VARIANT values: {sorted(unknown)}"
+            )
+        variant = _pick_unique_variant(raw_values.unique(), "SOURCE_VARIANT")
+        if variant:
+            return variant
+
+    if "SAMPLE_ID" in df.columns:
+        prefixes = (
+            df["SAMPLE_ID"].dropna().astype(str)
+            .str.split("-", n=1).str[0].str.strip().str.lower()
+        )
+        candidates = prefixes[prefixes.isin(_KNOWN_VARIANTS)].unique()
+        return _pick_unique_variant(candidates, "SAMPLE_ID variant prefix")
+
+    return None
+
+
+def validate_loaded_manifest_variant(
+    df: pd.DataFrame,
+    manifest_path: Path | None,
+    source: LSA64SourceConfig,
+) -> None:
+    """Reject reused manifests that were built for a different variant."""
+    manifest_variant = infer_manifest_variant(df)
+    if manifest_variant is None:
+        raise ValueError(
+            f"Cannot verify the source variant for existing LSA64 manifest "
+            f"{manifest_path or '<unknown>'}. Expected SOURCE_VARIANT or "
+            f"SAMPLE_ID values prefixed with 'raw-' or 'cut-'. Regenerate "
+            f"the manifest with dataset.manifest=true."
+        )
+    if manifest_variant != source.variant:
+        raise ValueError(
+            f"Existing LSA64 manifest {manifest_path or '<unknown>'} was built "
+            f"for variant={manifest_variant!r}, but current config requests "
+            f"variant={source.variant!r}. Regenerate the manifest or use a "
+            f"manifest built for the matching variant."
+        )
 
 
 def validate_release(
     source: LSA64SourceConfig,
-    video_dir: str,
+    video_dir: Optional[Path],
     log: logging.Logger,
 ) -> dict:
     """Validate LSA64 release directory. Returns stats dict."""
-    if not video_dir:
+    if video_dir is None:
         raise FileNotFoundError(
             "LSA64 requires a local release directory. "
             "Set dataset.source.release_dir or paths.videos in your config YAML.\n"
             "Download LSA64 from https://facundoq.github.io/datasets/lsa64/"
         )
-    if not Path(video_dir).exists():
+    if not video_dir.exists():
         raise FileNotFoundError(
             f"LSA64 release directory not found: {video_dir}\n"
             f"LSA64 requires manual download. "
             f"See https://facundoq.github.io/datasets/lsa64/ for instructions."
         )
-    mp4_files = list(Path(video_dir).glob("*.mp4"))
+    mp4_files = list(video_dir.glob("*.mp4"))
     if not mp4_files:
         raise FileNotFoundError(
             f"No .mp4 files found in LSA64 directory: {video_dir}\n"
@@ -71,7 +170,14 @@ def validate_release(
         "LSA64 release directory validated: %s (%d .mp4 files)",
         video_dir, len(mp4_files),
     )
-    return {"validated": True, "video_dir": video_dir, "mp4_count": len(mp4_files)}
+    release_root = video_dir.parent if infer_variant_from_path(video_dir) else video_dir
+    return {
+        "validated": True,
+        "release_dir": str(release_root),
+        "video_dir": str(video_dir),
+        "variant": source.variant,
+        "mp4_count": len(mp4_files),
+    }
 
 
 def load_lsa64_class_map(

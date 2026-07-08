@@ -3,7 +3,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -13,6 +13,7 @@ from .source import (
     AUTSLSourceConfig,
     MODALITY_SUFFIX,
     discover_split_dir,
+    get_selected_splits,
     parse_signer_id,
     resolve_class_id_file,
     resolve_labels_file,
@@ -24,11 +25,7 @@ def build(config, source: AUTSLSourceConfig, log: logging.Logger) -> pd.DataFram
     """Build canonical manifest from AUTSL release directory."""
     manifest_path = config.paths.manifest
     release_root = resolve_release_root(source, config)
-
-    if source.split == "all":
-        selected_splits = ["train", "val", "test"]
-    else:
-        selected_splits = [source.split]
+    selected_splits = list(get_selected_splits(source))
 
     class_id_path = resolve_class_id_file(source, release_root)
     if class_id_path is None or not class_id_path.exists():
@@ -41,7 +38,7 @@ def build(config, source: AUTSLSourceConfig, log: logging.Logger) -> pd.DataFram
         header=None,
         names=["CLASS_ID", "GLOSS_TR", "GLOSS_EN"],
     )
-    class_lookup: Dict[int, tuple] = {}
+    class_lookup: Dict[int, Tuple[str, str]] = {}
     for _, row in class_map.iterrows():
         try:
             cid = int(row["CLASS_ID"])
@@ -91,7 +88,7 @@ def _build_split_df(
     release_root: Path,
     source: AUTSLSourceConfig,
     modality_suffix: str,
-    class_lookup: Dict[int, tuple],
+    class_lookup: Dict[int, Tuple[str, str]],
     log: logging.Logger,
 ) -> Optional[pd.DataFrame]:
     """Build a manifest DataFrame for a single split."""
@@ -144,21 +141,20 @@ def _build_split_df(
         physical_stem = f"{sample_key}{modality_suffix}"
         rel_path = f"{split_dir_name}/{physical_stem}.mp4"
         video_path = release_root / rel_path
+        video_exists = video_path.exists()
 
-        if not video_path.exists():
+        if not video_exists:
             log.debug(
                 "Video file not found, will be handled by availability policy: %s",
                 video_path,
             )
             skipped += 1
 
-        if label_id is not None and label_id in class_lookup:
-            gloss_tr, gloss_en = class_lookup[label_id]
-        else:
-            gloss_tr = ""
-            gloss_en = ""
+        gloss_tr, gloss_en = (
+            class_lookup.get(label_id, ("", "")) if label_id is not None else ("", "")
+        )
 
-        if video_path.exists():
+        if video_exists:
             duration = get_video_duration(str(video_path))
             fps = get_video_fps(str(video_path)) or 30.0
         else:

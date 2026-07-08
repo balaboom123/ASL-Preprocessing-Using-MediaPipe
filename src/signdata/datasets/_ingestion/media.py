@@ -9,7 +9,7 @@ in ``signdata.utils.video``.
 import logging
 import subprocess
 from pathlib import Path
-from typing import Union
+from typing import Sequence, Union
 
 import cv2
 
@@ -76,7 +76,7 @@ def materialize_frames_to_video(
     *,
     fps: float = 25.0,
     codec: str = "libx264",
-    pattern: str = "*.png",
+    pattern: Union[str, Sequence[str]] = "*.png",
     overwrite: bool = False,
 ) -> Path:
     """Encode a directory of ordered frame images into a video file.
@@ -94,8 +94,8 @@ def materialize_frames_to_video(
         Frame rate for the output video.
     codec : str
         Video codec (default ``libx264``).
-    pattern : str
-        Glob pattern for frame files (default ``*.png``).
+    pattern : str or sequence[str]
+        Glob pattern or patterns for frame files (default ``*.png``).
     overwrite : bool
         If *False* (default), skip materialisation when *output_path* exists.
 
@@ -121,10 +121,10 @@ def materialize_frames_to_video(
         logger.debug("Video already exists, skipping: %s", output_path)
         return output_path
 
-    frames = sorted(frame_dir.glob(pattern))
+    frames = _resolve_frame_paths(frame_dir, pattern)
     if not frames:
         raise FileNotFoundError(
-            f"No frames matching '{pattern}' in {frame_dir}"
+            f"No frames matching {pattern!r} in {frame_dir}"
         )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -166,3 +166,19 @@ def materialize_frames_to_video(
         len(frames), output_path, fps,
     )
     return output_path
+
+
+def _resolve_frame_paths(
+    frame_dir: Path,
+    pattern: Union[str, Sequence[str]],
+) -> list[Path]:
+    """Resolve frame files from one or more glob patterns."""
+    patterns = [pattern] if isinstance(pattern, str) else list(pattern)
+    matched: dict[Path, None] = {}
+
+    for glob_pattern in patterns:
+        for frame in sorted(frame_dir.glob(glob_pattern)):
+            if frame.is_file():
+                matched.setdefault(frame, None)
+
+    return sorted(matched)

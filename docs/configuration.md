@@ -62,7 +62,15 @@ configs/
 │   ├── baseline_youtube_asl.yaml
 │   └── privacy_aware_slt.yaml
 └── jobs/
+    ├── autsl/
+    │   ├── mediapipe.yaml
+    │   ├── mmpose.yaml
+    │   └── video.yaml
     ├── msasl/
+    │   ├── mediapipe.yaml
+    │   ├── mmpose.yaml
+    │   └── video.yaml
+    ├── csl/
     │   ├── mediapipe.yaml
     │   ├── mmpose.yaml
     │   └── video.yaml
@@ -129,10 +137,18 @@ If omitted, the loader derives these defaults from `paths.root`:
 |---|---|---|---|
 | `video_ids_file` | `str` | `""` | Video ID list for YouTube-style datasets |
 | `annotations_dir` | `str` | `""` | Directory containing MS-ASL JSON annotation files |
+| `metadata_file` | `str` | `""` | Optional explicit BOBSL metadata JSON path when `subset2episode.json` is not stored in the default release location |
 | `metadata_json` | `str` | `""` | Canonical WLASL metadata JSON path (`annotation_json` is accepted as a compatibility alias) |
+| `annotation_root` | `str` | `""` | Optional explicit BOBSL isolated-sign annotation path or directory |
+| `subtitles_root` | `str` | `""` | Optional explicit BOBSL subtitle directory |
+| `release_dir` | `str` | `""` | Local dataset release root for manually downloaded datasets such as AUTSL, LSA64, CSL, and RWTH-PHOENIX-Weather |
+| `variant` | `str` | adapter defaults | Dataset release variant such as `cut`, `raw`, or corpus-specific release names |
+| `modality` | `str` | adapter defaults | Input modality selector for datasets with paired files such as AUTSL (`rgb` or `depth`) |
 | `languages` | `list[str]` | adapter defaults | Transcript language codes |
 | `availability_policy` | `str` | `"drop_unavailable"` | Availability handling policy for datasets that may have missing clips |
 | `download_mode` | `str` | adapter defaults | Dataset acquisition mode such as `validate` or `download_missing`; WLASL uses `validate` for local preprocessed clips and `download_missing` for raw-source URL fetches |
+| `prepare_mode` | `str` | adapter defaults | Local release preparation mode for datasets such as RWTH-PHOENIX-Weather and CSL; CSL uses `validate`, `materialize_missing`, or `rematerialize_all` to select between existing RGB videos and frame-folder materialization |
+| `video_fps` | `float` | adapter defaults | Frame rate used when materializing frame-folder datasets such as CSL or RWTH-PHOENIX-Weather into `.mp4` clips |
 | `download_format` | `str` | `"worstvideo[...]+worstaudio/.../best"` | yt-dlp format selector |
 | `rate_limit` | `str` | `"5M"` | Download rate limit |
 | `concurrent_fragments` | `int` | `5` | Parallel download fragments |
@@ -143,12 +159,27 @@ If omitted, the loader derives these defaults from `paths.root`:
 | `min_duration` | `float` | `0.2` | Min segment duration |
 | `max_duration` | `float` | `60.0` | Max segment duration |
 | `manifest_csv` | `str` | `""` | Existing manifest path for datasets such as How2Sign |
-| `split` | `str` | `"all"` | Split label for datasets such as How2Sign, WLASL, and MS-ASL |
+| `split` | `str` | `"all"` | Split label for datasets such as How2Sign, WLASL, MS-ASL, and AUTSL |
+| `view` | `str` | adapter defaults | Dataset view selector for multi-view releases such as BOBSL (`subtitle_slt` or `isolated_signs`) |
+| `subtitle_alignment` | `str` | adapter defaults | Subtitle alignment choice for BOBSL (`manual` or `original`) |
+| `split_strategy` | `str` | adapter defaults | Split assignment policy for datasets such as LSA64 |
+| `protocol` | `str` | adapter defaults | Evaluation protocol name for datasets such as CSL (`split_i` or `split_ii`) |
+| `rgb_subdir` | `str` | adapter defaults | Relative RGB data directory inside a local release such as CSL |
+| `corpus_file` | `str` | `""` | Sentence text file for corpora such as CSL |
+| `split_spec_file` | `str` | `""` | Optional per-sample split override TSV for datasets such as CSL |
+| `class_id_file` | `str` | `""` | Optional class correspondence CSV for datasets such as AUTSL |
+| `train_labels_file` / `val_labels_file` / `test_labels_file` | `str` | `""` | Optional explicit split-label CSV overrides for datasets such as AUTSL |
 | `subset` | `int` | `0` | Optional class-count subset for datasets such as WLASL and MS-ASL |
+| `train_signers` / `val_signers` / `test_signers` | `list[int]` | adapter defaults | Explicit signer groups for signer-based datasets such as LSA64 |
+| `class_map_file` | `str` | `""` | Optional class-id to gloss mapping TSV; LSA64 and SLoVo can use bundled defaults |
+| `allow_missing_class_map` | `bool` | `false` | Allow manifest generation without class labels when a class map is unavailable |
 | `text_processing` | `dict` | adapter defaults | Text cleanup options for transcript-derived manifests |
 
 Relative file paths in `dataset.source`, such as `video_ids_file`, `manifest_csv`,
-`annotations_dir`, `metadata_json`, and `annotation_json`, are resolved from the project root.
+`annotations_dir`, `metadata_json`, `annotation_json`, `release_dir`, `class_map_file`,
+`class_id_file`, `train_labels_file`, `val_labels_file`, `test_labels_file`,
+`corpus_file`, `split_spec_file`, `metadata_file`, `annotation_root`, and
+`subtitles_root`, are resolved from the project root.
 
 ## `processing`
 

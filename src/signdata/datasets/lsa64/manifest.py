@@ -10,20 +10,28 @@ import pandas as pd
 from .._ingestion.availability import apply_availability_policy_paths
 from .._ingestion.classmap import join_class_map
 from .._ingestion.media import get_video_duration, get_video_fps
-from .source import LSA64SourceConfig, load_lsa64_class_map, resolve_video_dir
+from .source import DEFAULT_FPS, LSA64SourceConfig, load_lsa64_class_map, resolve_video_dir
 
 
-def build(config, source: LSA64SourceConfig, log: logging.Logger) -> pd.DataFrame:
+def build(
+    config,
+    source: LSA64SourceConfig,
+    video_dir: Optional[Path] = None,
+    log: Optional[logging.Logger] = None,
+) -> pd.DataFrame:
     """Discover .mp4 files, parse filenames, join class map, write TSV manifest."""
-    video_dir = resolve_video_dir(config, source)
+    if log is None:
+        log = logging.getLogger(__name__)
+    if video_dir is None:
+        video_dir = resolve_video_dir(config, source)
 
-    if not video_dir or not Path(video_dir).exists():
+    if not video_dir or not video_dir.exists():
         raise FileNotFoundError(
             f"LSA64 video directory not found: {video_dir!r}. "
             f"Run the download stage first or set release_dir / paths.videos."
         )
 
-    mp4_files = sorted(Path(video_dir).glob("*.mp4"))
+    mp4_files = sorted(video_dir.glob("*.mp4"))
     if not mp4_files:
         raise FileNotFoundError(f"No .mp4 files found in: {video_dir}")
 
@@ -52,12 +60,13 @@ def build(config, source: LSA64SourceConfig, log: logging.Logger) -> pd.DataFram
 
         video_path = str(mp4)
         duration = get_video_duration(video_path)
-        fps = get_video_fps(video_path) or 60.0
+        fps = get_video_fps(video_path) or DEFAULT_FPS
 
         rows.append({
             "SAMPLE_ID": f"{source.variant}-{stem}",
             "VIDEO_ID": stem,
             "REL_PATH": mp4.name,
+            "SOURCE_VARIANT": source.variant,
             "CLASS_ID": class_id,
             "SIGNER_ID": signer_id,
             "REPETITION_ID": repetition_id,
@@ -113,6 +122,7 @@ def build(config, source: LSA64SourceConfig, log: logging.Logger) -> pd.DataFram
 
     canonical_columns = [
         "SAMPLE_ID", "VIDEO_ID", "REL_PATH", "SPLIT",
+        "SOURCE_VARIANT",
         "START", "END", "CLASS_ID", "GLOSS", "TEXT",
         "SIGNER_ID", "FPS", "REPETITION_ID", "HANDEDNESS",
     ]
@@ -155,8 +165,7 @@ def _apply_split_strategy(
 
         unknown_count = (df["SPLIT"] == "unknown").sum()
         if unknown_count:
-            import logging as _logging
-            _logging.getLogger(__name__).warning(
+            logging.getLogger(__name__).warning(
                 "%d rows have SIGNER_IDs not assigned to any split "
                 "(train=%s, val=%s, test=%s).",
                 unknown_count,

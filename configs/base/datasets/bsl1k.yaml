@@ -1,0 +1,9 @@
+dataset:
+  name: bsl1k
+  download: true
+  manifest: true
+  source:
+    release_dir: dataset/bobsl
+    view: isolated_signs
+    split: all
+    availability_policy: drop_unavailable

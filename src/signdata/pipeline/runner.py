@@ -64,6 +64,7 @@ class PipelineRunner:
             # Load existing manifest so downstream stages can iterate it
             if self.config.paths.manifest:
                 context.load_manifest(self.config.paths.manifest)
+                self.dataset.validate_loaded_manifest(self.config, context)
 
         # Filter out unavailable rows before downstream stages
         if context.manifest_df is not None:

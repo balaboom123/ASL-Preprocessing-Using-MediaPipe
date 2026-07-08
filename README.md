@@ -30,8 +30,13 @@ Supports multiple extractors including **MediaPipe Holistic**, **MMPose**, **MMD
 |:--------|:------|:------------|:--------|
 | **[YouTube-ASL](docs/datasets.md#youtube-asl)** | NeurIPS 2023 | 11,000+ videos, 73,000+ segments -- open-domain ASL-English parallel corpus | [Apache-2.0](https://github.com/google-research/google-research/tree/master/youtube_asl) |
 | **[How2Sign](docs/datasets.md#how2sign)** | CVPR 2021 | 80+ hours of instructional ASL in a controlled studio environment | [CC BY-NC 4.0](https://how2sign.github.io/) |
+| **[BOBSL](docs/datasets.md#bobsl)** | ICCV 2021 | Broadcast subtitle-aligned BSL corpus with continuous subtitle segments and isolated-sign annotations | Dataset access required |
+| **[BSL-1K](docs/datasets.md#bsl-1k)** | arXiv 2020 | Compatibility lexical view over the public BOBSL release for isolated-sign style preprocessing | Follows BOBSL release terms |
 | **[WLASL](docs/datasets.md#wlasl)** | WACV 2020 | 12,000+ isolated sign clips across 2,000 ASL glosses | [Dataset site](https://dxli94.github.io/WLASL/) |
 | **[MS-ASL](docs/datasets.md#ms-asl)** | CVPR 2019 | Large-scale isolated ASL dataset with signer-diverse lexical clips | [Microsoft Download Center terms](https://www.microsoft.com/en-us/download/details.aspx?id=100121) |
+| **[AUTSL](docs/datasets.md#autsl)** | ICCV 2021 challenge | Turkish Sign Language isolated-sign benchmark with RGB/depth clips and signer-independent train/val/test splits | Dataset access required |
+| **[CSL](docs/datasets.md#csl)** | USTC release 2015 | 100 continuous Chinese sign sentences from 50 signers; RGB/depth/skeleton release with paper-aligned Split I / Split II evaluation | [CSL release agreement](https://ustc-slr.github.io/datasets/2015_csl/Release-Agreement-csl2015.pdf) |
+| **[LSA64](docs/datasets.md#lsa64)** | CACIC 2016 | 3,200 isolated Argentinian Sign Language clips across 64 glosses | [CC BY-NC-SA 4.0](https://facundoq.github.io/datasets/lsa64/) |
 
 For paper-aligned preprocessing methodology, see [Research-Aligned Preprocessing](docs/research-preprocessing.md).
 
@@ -62,8 +67,23 @@ python -m signdata run configs/jobs/youtube_asl/mediapipe.yaml
 # How2Sign: extract MMPose landmarks (CUDA required)
 python -m signdata run configs/jobs/how2sign/mmpose.yaml
 
+# BOBSL: validate local release, build subtitle-aligned manifest, extract MediaPipe landmarks
+python -m signdata run configs/jobs/bobsl/mediapipe.yaml
+
+# BSL-1K compatibility view: build isolated-sign manifest from the BOBSL release
+python -m signdata run configs/jobs/bsl1k/mediapipe.yaml
+
 # MS-ASL: validate local clips, extract MediaPipe landmarks, normalize, package
 python -m signdata run configs/jobs/msasl/mediapipe.yaml
+
+# AUTSL: validate local release, extract MediaPipe landmarks, normalize, package
+python -m signdata run configs/jobs/autsl/mediapipe.yaml
+
+# CSL: validate/materialize the continuous release, extract MediaPipe landmarks, normalize, package
+python -m signdata run configs/jobs/csl/mediapipe.yaml
+
+# LSA64: validate local clips, extract MediaPipe landmarks, normalize, package
+python -m signdata run configs/jobs/lsa64/mediapipe.yaml
 
 # Override config values from the command line
 python -m signdata run configs/jobs/youtube_asl/mediapipe.yaml \
@@ -80,7 +100,7 @@ Both modes produce [WebDataset](https://github.com/webdataset/webdataset) tar sh
 - [Architecture](docs/architecture.md) -- system design, registry, pipeline flow
 - [Configuration](docs/configuration.md) -- job/experiment layout and CLI overrides
 - [Pipeline Stages](docs/pipeline-stages.md) -- recipe stages and optional stages
-- [Datasets](docs/datasets.md) -- YouTube-ASL, How2Sign, WLASL, and MS-ASL setup
+- [Datasets](docs/datasets.md) -- YouTube-ASL, How2Sign, BOBSL, BSL-1K, WLASL, MS-ASL, AUTSL, CSL, LSA64, and RWTH-PHOENIX-Weather setup
 - [Contributing](CONTRIBUTING.md) -- required dataset package structure and extension guide
 - [Research-Aligned Preprocessing](docs/research-preprocessing.md) -- paper-aligned preprocessing notes
 

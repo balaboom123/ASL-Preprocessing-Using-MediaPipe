@@ -5,7 +5,6 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
-import pandas as pd
 from pydantic import BaseModel
 
 from .._ingestion.availability import AvailabilityPolicy
@@ -20,6 +19,14 @@ MODALITY_SUFFIX: Dict[str, str] = {
 SPLIT_ALIASES: Dict[str, List[str]] = {
     "val": ["validation"],
     "validation": ["val"],
+}
+
+VALID_SPLITS = {"train", "val", "test", "all"}
+VALID_MODALITIES = set(MODALITY_SUFFIX)
+LABEL_OVERRIDE_FIELDS = {
+    "train": "train_labels_file",
+    "val": "val_labels_file",
+    "test": "test_labels_file",
 }
 
 
@@ -48,6 +55,24 @@ def get_source_config(config) -> AUTSLSourceConfig:
 def resolve_release_root(source: AUTSLSourceConfig, config) -> Path:
     raw = source.release_dir or (config.paths.videos or "")
     return Path(raw)
+
+
+def get_selected_splits(source: AUTSLSourceConfig) -> tuple[str, ...]:
+    return ("train", "val", "test") if source.split == "all" else (source.split,)
+
+
+def validate_source_config(source: AUTSLSourceConfig) -> None:
+    """Validate user-facing split and modality settings."""
+    if source.split not in VALID_SPLITS:
+        raise ValueError(
+            f"Unsupported AUTSL split '{source.split}'. "
+            f"Expected one of {sorted(VALID_SPLITS)}."
+        )
+    if source.modality not in VALID_MODALITIES:
+        raise ValueError(
+            f"Unsupported AUTSL modality '{source.modality}'. "
+            f"Expected one of {sorted(VALID_MODALITIES)}."
+        )
 
 
 def parse_signer_id(sample_key: str) -> str:
@@ -88,11 +113,13 @@ def discover_class_id_file(release_root: Path) -> Optional[Path]:
 
 def discover_labels_file(release_root: Path, split: str) -> Optional[Path]:
     """Search *release_root* for the labels file for *split*."""
-    candidates = [
-        release_root / f"{split}_labels.csv",
-        release_root / f"{split}" / f"{split}_labels.csv",
-        release_root / f"labels" / f"{split}_labels.csv",
-    ]
+    candidates = []
+    for split_name in [split] + SPLIT_ALIASES.get(split, []):
+        candidates.extend([
+            release_root / f"{split_name}_labels.csv",
+            release_root / f"{split_name}" / f"{split_name}_labels.csv",
+            release_root / "labels" / f"{split_name}_labels.csv",
+        ])
     for path in candidates:
         if path.exists():
             return path
@@ -113,14 +140,15 @@ def resolve_labels_file(
     source: AUTSLSourceConfig,
     release_root: Path,
 ) -> Optional[Path]:
-    explicit = {
-        "train": source.train_labels_file,
-        "val": source.val_labels_file,
-        "test": source.test_labels_file,
-    }.get(split, "")
+    field_name = LABEL_OVERRIDE_FIELDS.get(split)
+    explicit = getattr(source, field_name, "") if field_name else ""
     if explicit:
         p = Path(explicit)
-        return p if p.exists() else None
+        if not p.exists():
+            raise FileNotFoundError(
+                f"AUTSL dataset.source.{field_name} not found: {p}"
+            )
+        return p
     return discover_labels_file(release_root, split)
 
 
@@ -131,6 +159,7 @@ def validate(
 ) -> dict:
     """Validate AUTSL release directory and required files."""
     release_root = resolve_release_root(source, config)
+    validate_source_config(source)
 
     if not release_root.exists():
         raise FileNotFoundError(
@@ -139,17 +168,11 @@ def validate(
             f"extracted challenge root and try again."
         )
 
-    found_split = None
-    for split_name in ("train", "val", "validation", "test"):
-        if (release_root / split_name).is_dir():
-            found_split = split_name
-            break
-    if found_split is None:
-        raise FileNotFoundError(
-            f"AUTSL release directory contains no recognised split "
-            f"subdirectories (train/val/test) under {release_root}. "
-            f"Ensure the dataset archive is fully extracted."
-        )
+    selected_splits = get_selected_splits(source)
+    resolved_split_dirs: Dict[str, str] = {}
+    for split_name in selected_splits:
+        split_dir = discover_split_dir(release_root, split_name)
+        resolved_split_dirs[split_name] = split_dir.name
 
     class_id_path = resolve_class_id_file(source, release_root)
     if class_id_path is None or not class_id_path.exists():
@@ -160,13 +183,21 @@ def validate(
             f"{release_root}."
         )
 
+    for field_name in LABEL_OVERRIDE_FIELDS.values():
+        explicit = getattr(source, field_name)
+        if explicit and not Path(explicit).exists():
+            raise FileNotFoundError(
+                f"AUTSL dataset.source.{field_name} not found: {explicit}"
+            )
+
     log.info(
-        "AUTSL release validated: root=%s, split_found=%s, class_file=%s",
-        release_root, found_split, class_id_path,
+        "AUTSL release validated: root=%s, splits=%s, class_file=%s",
+        release_root, sorted(resolved_split_dirs), class_id_path,
     )
     return {
         "validated": True,
         "release_root": str(release_root),
-        "split_found": found_split,
+        "splits": dict(resolved_split_dirs),
+        "modality": source.modality,
         "class_id_file": str(class_id_path),
     }

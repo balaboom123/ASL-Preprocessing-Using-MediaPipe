@@ -1,0 +1,10 @@
+dataset:
+  name: bobsl
+  download: true
+  manifest: true
+  source:
+    release_dir: dataset/bobsl
+    view: subtitle_slt
+    split: all
+    subtitle_alignment: manual
+    availability_policy: drop_unavailable

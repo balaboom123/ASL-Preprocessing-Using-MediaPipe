@@ -43,7 +43,7 @@ class PipelineContext:
         cfg = self.config
         self.output_dir = Path(cfg.paths.output) / cfg.run_name
         self.webdataset_dir = Path(cfg.paths.webdataset) / cfg.run_name
-        self.videos_dir = Path(cfg.paths.videos) if cfg.paths.videos else None
+        self.videos_dir = self.dataset.resolve_videos_dir(cfg)
         self.manifest_path = Path(cfg.paths.manifest) if cfg.paths.manifest else None
 
     def load_manifest(self, manifest_path: str) -> None:
