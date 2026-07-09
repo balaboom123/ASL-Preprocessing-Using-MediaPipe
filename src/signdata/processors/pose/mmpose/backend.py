@@ -1,4 +1,4 @@
-"""MMPose-based 3D pose landmark extraction."""
+"""MMPose-based whole-body pose landmark extraction."""
 
 import logging
 from typing import Optional, List, Tuple
@@ -16,13 +16,14 @@ class MultiPersonDetected(Exception):
 
 
 class MMPoseExtractor(LandmarkExtractor):
-    """Extracts 3D pose landmarks using MMPose RTMPose3D.
+    """Extracts whole-body landmarks using MMPose.
 
     Uses a two-stage pipeline:
     1. RTMDet for person detection (bounding boxes)
-    2. RTMPose3D for 3D pose estimation
+    2. MMPose top-down whole-body pose estimation
 
-    Always outputs all 133 COCO WholeBody keypoints.
+    Always outputs all 133 COCO WholeBody keypoints as [x, y, z, visibility].
+    For 2D MMPose models, z is 0.
     """
 
     # MMPose supports batch detection
@@ -89,6 +90,8 @@ class MMPoseExtractor(LandmarkExtractor):
             bboxes = np.array([[0, 0, W, H]], dtype=np.float32)
 
         pose_est_results = inference_topdown(self.pose_estimator, frame, bboxes)
+        if not pose_est_results:
+            return None
 
         for idx, pose_est_result in enumerate(pose_est_results):
             pose_est_result.track_id = pose_est_results[idx].get("track_id", 1e4)
@@ -314,29 +317,31 @@ class MMPoseExtractor(LandmarkExtractor):
         img_h: int,
         instance_index: int = 0,
     ) -> Optional[np.ndarray]:
-        """Extract and pack keypoints from 3D pose estimation results."""
+        """Extract and pack keypoints from MMPose estimation results."""
         if pred_3d_instances is None:
             return None
 
         tk = getattr(pred_3d_instances, "transformed_keypoints", None)
         k3d = getattr(pred_3d_instances, "keypoints", None)
-        if tk is None or k3d is None:
+        if k3d is None:
             return None
 
-        tk = self._to_numpy(tk)
         k3d = self._to_numpy(k3d)
-        tk = self._squeeze_kpts(tk)
         k3d = self._squeeze_kpts(k3d)
+        tk = k3d if tk is None else self._squeeze_kpts(self._to_numpy(tk))
 
         if tk.ndim != 3 or k3d.ndim != 3 or tk.shape[0] == 0 or k3d.shape[0] == 0:
             return None
 
-        xy = tk[instance_index]
-        xyz = k3d[instance_index]
+        xy = tk[instance_index][..., :2]
+        z = (
+            k3d[instance_index][..., 2]
+            if k3d.shape[-1] >= 3
+            else np.zeros(xy.shape[0], dtype=np.float32)
+        )
 
         x_norm = xy[..., 0] / float(img_w)
         y_norm = xy[..., 1] / float(img_h)
-        z = xyz[..., 2]
 
         kpt_scores = getattr(pred_3d_instances, "keypoint_scores", None)
         if kpt_scores is not None:
@@ -346,9 +351,9 @@ class MMPoseExtractor(LandmarkExtractor):
             elif kpt_scores.ndim == 3:
                 visible = kpt_scores[instance_index, :, 0]
             else:
-                visible = np.ones(133, dtype=np.float32)
+                visible = np.ones(xy.shape[0], dtype=np.float32)
         else:
-            visible = np.ones(133, dtype=np.float32)
+            visible = np.ones(xy.shape[0], dtype=np.float32)
 
         out = np.stack([x_norm, y_norm, z, visible], axis=-1).astype(np.float32)
         return out

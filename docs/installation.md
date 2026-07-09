@@ -14,7 +14,7 @@ This installs all dependencies needed for MediaPipe-based pose jobs, which work 
 
 ## MMPose (GPU Required)
 
-MMPose RTMPose3D requires a CUDA-capable GPU. Follow these steps after the base installation:
+MMPose whole-body extraction requires a CUDA-capable GPU. Follow these steps after the base installation:
 
 ### 1. Install MMPose dependencies
 
@@ -23,30 +23,27 @@ pip install -U openmim
 mim install mmcv==2.0.1 mmengine==0.10.7 mmdet==3.1.0
 ```
 
-### 2. Clone and install MMPose
+### 2. Install MMPose from pip
 
 ```bash
-git clone https://github.com/open-mmlab/mmpose.git ../mmpose
-pip install -v -e ../mmpose
-export PYTHONPATH="/path/to/mmpose:$PYTHONPATH"
+pip install mmpose==1.3.2
 ```
 
-### 3. Download model checkpoints
+Do not install MMPose in editable mode from a sibling checkout; the default configs use the package resources shipped with `mmpose==1.3.2`.
+
+### 3. Download the detector checkpoint
 
 ```bash
-mkdir -p resources/pose_models/mmpose/checkpoints
 mkdir -p resources/detection_models/rtmdet/checkpoints
-
-wget -P resources/pose_models/mmpose/checkpoints/ \
-  https://download.openmmlab.com/mmpose/v1/wholebody_3d_keypoint/rtmw3d/rtmw3d-l_8xb64_cocktail14-384x288-794dbc78_20240626.pth
 
 wget -P resources/detection_models/rtmdet/checkpoints/ \
   https://download.openmmlab.com/mmpose/v1/projects/rtmpose/rtmdet_nano_8xb32-100e_coco-obj365-person-05d8511e.pth
 ```
 
-These checkpoints are used by the RTMPose3D whole-body estimator and the RTMDet
-person detector respectively. The default MMPose job configs in this repo point
-to these `resources/.../checkpoints/` locations.
+The default MMPose pose checkpoint is referenced by URL in the job configs, so
+MMPose downloads it through its normal checkpoint loader. The RTMDet person
+detector still uses the local `resources/detection_models/rtmdet/checkpoints/`
+path above.
 
 ### 4. Verify installation
 

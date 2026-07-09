@@ -278,8 +278,8 @@ source FPS. It does not upsample or invent frames.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `pose_model_config` | `str` | none | Pose model config path |
-| `pose_model_checkpoint` | `str` | none | Pose checkpoint path |
+| `pose_model_config` | `str` | none | Pose model config path or `mmpose::...` package resource |
+| `pose_model_checkpoint` | `str` | none | Pose checkpoint path or URL |
 | `device` | `str` | `"cuda:0"` | Inference device |
 | `bbox_threshold` | `float` | `0.5` | Person-box threshold |
 | `keypoint_threshold` | `float` | `0.3` | Keypoint threshold |

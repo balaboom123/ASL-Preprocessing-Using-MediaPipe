@@ -346,8 +346,42 @@ class TestResolvePaths:
         )
         project_root = Path("/proj")
         cfg = resolve_paths(cfg, project_root)
-        assert Path(cfg.processing.detection_config.det_model_config).as_posix() == "/abs/det.py"
-        assert Path(cfg.processing.pose_config.pose_model_config).as_posix() == "/abs/model.py"
+        assert (
+            Path(cfg.processing.detection_config.det_model_config).as_posix()
+            == "/abs/det.py"
+        )
+        assert (
+            Path(cfg.processing.pose_config.pose_model_config).as_posix()
+            == "/abs/model.py"
+        )
+
+    def test_mmpose_package_refs_unchanged(self):
+        cfg = Config(
+            dataset={"name": "test"},
+            processing={
+                "enabled": True,
+                "processor": "video2pose",
+                "detection": "mmdet",
+                "pose": "mmpose",
+                "detection_config": {
+                    "det_model_config": "resources/detection_models/rtmdet/configs/det.py",
+                    "det_model_checkpoint": "resources/detection_models/rtmdet/checkpoints/det.pth",
+                },
+                "pose_config": {
+                    "pose_model_config": "mmpose::wholebody_2d_keypoint/model.py",
+                    "pose_model_checkpoint": "https://example.com/model.pth",
+                },
+            },
+        )
+        cfg = resolve_paths(cfg, Path("/proj"))
+        assert (
+            cfg.processing.pose_config.pose_model_config
+            == "mmpose::wholebody_2d_keypoint/model.py"
+        )
+        assert (
+            cfg.processing.pose_config.pose_model_checkpoint
+            == "https://example.com/model.pth"
+        )
 
     def test_run_name_not_in_static_paths(self):
         """run_name is NOT embedded in paths by resolve_paths.
@@ -380,13 +414,9 @@ class TestLoadConfig:
         assert cfg.processing.processor == "video2pose"
         assert cfg.processing.pose == "mmpose"
         assert cfg.processing.detection == "mmdet"
-        assert cfg.processing.pose_config.pose_model_config == str(
-            project_root
-            / "resources"
-            / "pose_models"
-            / "mmpose"
-            / "configs"
-            / "rtmw3d-l_8xb64_cocktail14-384x288.py"
+        assert cfg.processing.pose_config.pose_model_config == (
+            "mmpose::wholebody_2d_keypoint/rtmpose/cocktail14/"
+            "rtmw-l_8xb320-270e_cocktail14-384x288.py"
         )
         assert cfg.processing.detection_config.det_model_config == str(
             project_root

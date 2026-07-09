@@ -203,7 +203,11 @@ def create_estimator(pose_type: str, pose_config) -> LandmarkExtractor:
             pose_config.pose_model_checkpoint,
             device=pose_config.device,
         )
-        pose_estimator.cfg.model.test_cfg.mode = "3d"
+        try:
+            if pose_estimator.cfg.model.get("type") == "TopdownPoseEstimator3D":
+                pose_estimator.cfg.model.test_cfg.mode = "3d"
+        except AttributeError:
+            pass
 
         class _Cfg:
             name = "mmpose"

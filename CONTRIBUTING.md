@@ -160,7 +160,7 @@ class MyProcessor(BaseProcessor):
 1. Create a class in `src/signdata/pose/` or one of its backend packages decorated with `@register_extractor`:
 
 ```python
-from signdata.pose.base import LandmarkExtractor
+from signdata.processors.pose.base import LandmarkExtractor
 from signdata.registry import register_extractor
 
 

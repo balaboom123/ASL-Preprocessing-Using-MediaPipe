@@ -226,6 +226,9 @@ def _alternate_legacy_model_checkpoints(
 
 def _resolve_model_path(path_str: str, project_root: Path, attr_name: str) -> str:
     """Resolve model paths relative to project root with migration fallbacks."""
+    if "://" in path_str or "::" in path_str:
+        return path_str
+
     resolved = _resolve_path(path_str, project_root)
     alternate_paths = _alternate_package_dirs(resolved)
     alternate_paths.extend(

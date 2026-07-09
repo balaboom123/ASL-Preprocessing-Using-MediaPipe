@@ -1,1 +1,0 @@
-"""Internal MMPose model variants."""
