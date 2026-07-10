@@ -29,6 +29,7 @@ Supports multiple extractors including **MediaPipe Holistic**, **MMPose**, **MMD
 | Dataset | Venue | Description | License |
 |:--------|:------|:------------|:--------|
 | **[YouTube-ASL](docs/datasets.md#youtube-asl)** | NeurIPS 2023 | 11,000+ videos, 73,000+ segments -- open-domain ASL-English parallel corpus | [Apache-2.0](https://github.com/google-research/google-research/tree/master/youtube_asl) |
+| **[OpenASL](docs/datasets.md#openasl)** | EMNLP 2022 | Open-domain ASL-English translation dataset with official TSV and bbox metadata | [CC BY-NC-ND 4.0](https://github.com/chevalierNoir/OpenASL) |
 | **[How2Sign](docs/datasets.md#how2sign)** | CVPR 2021 | 80+ hours of instructional ASL in a controlled studio environment | [CC BY-NC 4.0](https://how2sign.github.io/) |
 | **[BOBSL](docs/datasets.md#bobsl)** | ICCV 2021 | Broadcast subtitle-aligned BSL corpus with continuous subtitle segments and isolated-sign annotations | Dataset access required |
 | **[BSL-1K](docs/datasets.md#bsl-1k)** | arXiv 2020 | Compatibility lexical view over the public BOBSL release for isolated-sign style preprocessing | Follows BOBSL release terms |
@@ -37,6 +38,8 @@ Supports multiple extractors including **MediaPipe Holistic**, **MMPose**, **MMD
 | **[AUTSL](docs/datasets.md#autsl)** | ICCV 2021 challenge | Turkish Sign Language isolated-sign benchmark with RGB/depth clips and signer-independent train/val/test splits | Dataset access required |
 | **[CSL](docs/datasets.md#csl)** | USTC release 2015 | 100 continuous Chinese sign sentences from 50 signers; RGB/depth/skeleton release with paper-aligned Split I / Split II evaluation | [CSL release agreement](https://ustc-slr.github.io/datasets/2015_csl/Release-Agreement-csl2015.pdf) |
 | **[LSA64](docs/datasets.md#lsa64)** | CACIC 2016 | 3,200 isolated Argentinian Sign Language clips across 64 glosses | [CC BY-NC-SA 4.0](https://facundoq.github.io/datasets/lsa64/) |
+| **[SLoVo](docs/datasets.md#slovo)** | ICCVS 2023 | Russian Sign Language isolated-sign clips with official `annotations.csv` | [Dataset license](https://github.com/hukenovs/slovo) |
+| **[RWTH-PHOENIX-Weather](docs/datasets.md#rwth-phoenix-weather)** | CVIU 2015 | German Sign Language weather corpus distributed as image sequences and annotations | Dataset access required |
 
 For paper-aligned preprocessing methodology, see [Research-Aligned Preprocessing](docs/research-preprocessing.md).
 
@@ -100,7 +103,7 @@ Both modes produce [WebDataset](https://github.com/webdataset/webdataset) tar sh
 - [Architecture](docs/architecture.md) -- system design, registry, pipeline flow
 - [Configuration](docs/configuration.md) -- job/experiment layout and CLI overrides
 - [Pipeline Stages](docs/pipeline-stages.md) -- recipe stages and optional stages
-- [Datasets](docs/datasets.md) -- YouTube-ASL, How2Sign, BOBSL, BSL-1K, WLASL, MS-ASL, AUTSL, CSL, LSA64, and RWTH-PHOENIX-Weather setup
+- [Datasets](docs/datasets.md) -- setup for all built-in dataset adapters
 - [Contributing](CONTRIBUTING.md) -- required dataset package structure and extension guide
 - [Research-Aligned Preprocessing](docs/research-preprocessing.md) -- paper-aligned preprocessing notes
 

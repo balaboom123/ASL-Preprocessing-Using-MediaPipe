@@ -2,15 +2,15 @@
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Literal
 
 import pandas as pd
 from pydantic import BaseModel
 
 from .._ingestion.availability import AvailabilityPolicy
 
-# Bundled class map shipped with the package (assets/slovo_class_map.tsv)
-_BUNDLED_CLASS_MAP = (
+# Optional class map path used when class_map_mode="bundled".
+_DEFAULT_CLASS_MAP = (
     Path(__file__).resolve().parent.parent.parent.parent.parent
     / "assets"
     / "slovo_class_map.tsv"
@@ -24,6 +24,8 @@ OPTIONAL_PASSTHROUGH = {
     "width": "SRC_WIDTH",
     "height": "SRC_HEIGHT",
     "length": "FRAME_COUNT",
+    "begin": "FRAME_START",
+    "end": "FRAME_END",
 }
 
 
@@ -33,16 +35,19 @@ class SlovoSourceConfig(BaseModel):
     release_dir: str = ""
     annotations_csv: str = ""
     variant: str = "trimmed"
-    split: str = "all"
+    split: Literal["all", "train", "test"] = "all"
     availability_policy: AvailabilityPolicy = "fail_fast"
     class_map_file: str = ""
-    class_map_mode: str = "bundled"
+    class_map_mode: Literal["derive", "bundled", "none"] = "derive"
     include_background: bool = True
     background_labels: List[str] = ["no_event"]
 
 
 def get_source_config(config) -> SlovoSourceConfig:
-    return SlovoSourceConfig(**dict(config.dataset.source))
+    source_dict = dict(config.dataset.source)
+    if not source_dict.get("release_dir") and config.paths.videos:
+        source_dict["release_dir"] = config.paths.videos
+    return SlovoSourceConfig(**source_dict)
 
 
 def resolve_release_dir(source: SlovoSourceConfig, config) -> str:
@@ -92,6 +97,12 @@ def validate(source: SlovoSourceConfig, config, log: logging.Logger) -> dict:
         )
 
     ann = pd.read_csv(annotations_csv)
+    missing_cols = REQUIRED_COLUMNS - set(ann.columns)
+    if missing_cols:
+        raise ValueError(
+            f"SLoVo annotations.csv is missing required columns: "
+            f"{sorted(missing_cols)}. Available columns: {list(ann.columns)}"
+        )
     row_count = len(ann)
 
     log.info(
@@ -102,4 +113,4 @@ def validate(source: SlovoSourceConfig, config, log: logging.Logger) -> dict:
 
 
 def get_bundled_class_map_path(source: SlovoSourceConfig) -> Path:
-    return Path(source.class_map_file) if source.class_map_file else _BUNDLED_CLASS_MAP
+    return Path(source.class_map_file) if source.class_map_file else _DEFAULT_CLASS_MAP

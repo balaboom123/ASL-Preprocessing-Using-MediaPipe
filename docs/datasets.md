@@ -24,6 +24,27 @@ download stage fetches videos via yt-dlp and transcripts via
 `dataset.source.transcript_proxy_http` / `dataset.source.transcript_proxy_https`
 or retry from a non-blocked residential IP.
 
+## OpenASL
+
+Open-domain ASL-English translation data from online video with an official TSV
+manifest and optional bounding boxes ([OpenASL GitHub](https://github.com/chevalierNoir/OpenASL)).
+
+**First-stage config:**
+
+```bash
+python -m signdata run configs/base/datasets/openasl.yaml \
+  --override output.enabled=false
+```
+
+**Setup:**
+1. Download `data/openasl-v1.0.tsv` and `data/bbox-v1.0.json` from the official OpenASL repository.
+2. Place them under `dataset/openasl/data/`, or override `dataset.source.manifest_tsv` and `dataset.source.bbox_json`.
+3. Keep `paths.videos` pointed at the raw-video directory. `dataset.download` fetches raw YouTube videos by `yid`; `dataset.manifest` maps `vid`, `yid`, `start`, `end`, and the configured text column into the canonical manifest.
+
+OpenASL's official preprocessing also trims and spatially crops clips with the
+provided bbox file. In this repo that happens after the first stage through the
+normal video processing stages; the manifest stores timing and bbox metadata.
+
 ## How2Sign
 
 80+ hours of instructional "how-to" videos with continuous ASL, recorded in a controlled environment with professional signers ([Duarte et al., CVPR 2021](https://how2sign.github.io/)).
@@ -249,13 +270,35 @@ The shipped configs use `split_strategy: none` and emit `SPLIT=all` by default. 
 
 ```bash
 python -m signdata run configs/jobs/lsa64/mediapipe.yaml \
-  --override dataset.source.split_strategy=community_signer_8_1_1 \
-  --override dataset.source.split=train
+  --override dataset.source.split_strategy=community_signer_8_1_1 dataset.source.split=train
 ```
 
 By default, the adapter loads the bundled `assets/lsa64_class_map.tsv` gloss map derived from the official dataset website. You can override it with `dataset.source.class_map_file`.
 
 LSA64 is licensed under [CC BY-NC-SA 4.0](https://facundoq.github.io/datasets/lsa64/). If you use or redistribute derivatives of the dataset, the dataset authors request that you cite the official website or paper.
+
+## SLoVo
+
+Russian Sign Language isolated-sign dataset with trimmed RGB videos and an
+`annotations.csv` file ([SLoVo GitHub](https://github.com/hukenovs/slovo)).
+
+**First-stage config:**
+
+```bash
+python -m signdata run configs/base/datasets/slovo.yaml \
+  --override output.enabled=false
+```
+
+**Setup:**
+1. Download and extract the official trimmed SLoVo release under `dataset/slovo/`, or override `dataset.source.release_dir`.
+2. Keep the official `annotations.csv` in the release root, or override `dataset.source.annotations_csv`.
+3. Keep videos named by `attachment_id`, for example `dataset/slovo/<attachment_id>.mp4`.
+
+The SLoVo adapter validates the local release and builds one row per annotation.
+It maps the official `train` boolean to `SPLIT=train|test`, uses `text` as both
+`GLOSS` and `TEXT`, and derives `CLASS_ID` values from the annotation labels by
+default.
+
 ## RWTH-PHOENIX-Weather
 
 Continuous German Sign Language (DGS) weather-report dataset with ~8,000 sentence-level clips across train / dev / test splits ([Camgoz et al., CVPR 2018](https://openaccess.thecvf.com/content_cvpr_2018/html/Camgoz_Neural_Sign_Language_CVPR_2018_paper.html)).
@@ -264,14 +307,14 @@ Continuous German Sign Language (DGS) weather-report dataset with ~8,000 sentenc
 
 ```bash
 python -m signdata run configs/jobs/rwth_phoenix_weather/mediapipe.yaml \
-    dataset.source.release_dir=/path/to/PHOENIX-2014-T-release3
+  --override dataset.source.release_dir=/path/to/PHOENIX-2014-T-release3
 ```
 
 **Default video job:** `dataset.download (materialize missing videos) → dataset.manifest → processing.video2crop → output.webdataset`
 
 ```bash
 python -m signdata run configs/jobs/rwth_phoenix_weather/video.yaml \
-    dataset.source.release_dir=/path/to/PHOENIX-2014-T-release3
+  --override dataset.source.release_dir=/path/to/PHOENIX-2014-T-release3
 ```
 
 **Setup:**

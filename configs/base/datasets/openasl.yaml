@@ -1,0 +1,10 @@
+dataset:
+  name: openasl
+  download: true
+  manifest: true
+  source:
+    manifest_tsv: dataset/openasl/data/openasl-v1.0.tsv
+    bbox_json: dataset/openasl/data/bbox-v1.0.json
+    text_column: en
+    availability_policy: drop_unavailable
+

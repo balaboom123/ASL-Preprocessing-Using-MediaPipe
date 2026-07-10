@@ -146,6 +146,36 @@ class TestRWTHPhoenixWeatherValidateConfig:
         with pytest.raises(ValueError, match="release_dir"):
             RWTHPhoenixWeatherDataset.validate_config(cfg)
 
+    def test_invalid_split_raises(self, tmp_path):
+        cfg = Config(
+            dataset={
+                "name": "rwth_phoenix_weather",
+                "source": {"release_dir": str(tmp_path), "split": "val"},
+            }
+        )
+        with pytest.raises(ValueError, match="split"):
+            RWTHPhoenixWeatherDataset.validate_config(cfg)
+
+    def test_invalid_prepare_mode_raises(self, tmp_path):
+        cfg = Config(
+            dataset={
+                "name": "rwth_phoenix_weather",
+                "source": {"release_dir": str(tmp_path), "prepare_mode": "download"},
+            }
+        )
+        with pytest.raises(ValueError, match="prepare_mode"):
+            RWTHPhoenixWeatherDataset.validate_config(cfg)
+
+    def test_non_positive_video_fps_raises(self, tmp_path):
+        cfg = Config(
+            dataset={
+                "name": "rwth_phoenix_weather",
+                "source": {"release_dir": str(tmp_path), "video_fps": 0},
+            }
+        )
+        with pytest.raises(ValueError, match="video_fps|positive"):
+            RWTHPhoenixWeatherDataset.validate_config(cfg)
+
 
 class TestRWTHPhoenixWeatherSourceConfig:
     def test_defaults(self, tmp_path):

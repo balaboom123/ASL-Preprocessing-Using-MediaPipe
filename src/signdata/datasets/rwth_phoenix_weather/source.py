@@ -11,6 +11,8 @@ from .._ingestion.availability import AvailabilityPolicy
 from .._ingestion.media import materialize_frames_to_video
 
 ALL_SPLITS = ("train", "dev", "test")
+VALID_SPLITS = {*ALL_SPLITS, "all"}
+VALID_PREPARE_MODES = {"validate", "materialize_missing", "rematerialize_all"}
 
 
 class RWTHPhoenixWeatherSourceConfig(BaseModel):
@@ -29,6 +31,21 @@ def get_source_config(config) -> RWTHPhoenixWeatherSourceConfig:
     if not source_dict.get("release_dir") and getattr(config.paths, "videos", ""):
         source_dict["release_dir"] = config.paths.videos
     return RWTHPhoenixWeatherSourceConfig(**source_dict)
+
+
+def validate_source_config(source: RWTHPhoenixWeatherSourceConfig) -> None:
+    if source.split not in VALID_SPLITS:
+        raise ValueError(
+            f"Unsupported PHOENIX split '{source.split}'. "
+            f"Expected one of {sorted(VALID_SPLITS)}."
+        )
+    if source.prepare_mode not in VALID_PREPARE_MODES:
+        raise ValueError(
+            f"Unsupported PHOENIX prepare_mode '{source.prepare_mode}'. "
+            f"Expected one of {sorted(VALID_PREPARE_MODES)}."
+        )
+    if source.video_fps <= 0:
+        raise ValueError("PHOENIX video_fps must be positive.")
 
 
 def find_corpus_csvs(release_dir: Path, split: str) -> List[Path]:
@@ -112,6 +129,7 @@ def prepare(
 ) -> dict:
     """Validate the PHOENIX release directory and optionally materialise videos."""
     release_dir = Path(source.release_dir)
+    validate_source_config(source)
 
     if not release_dir.exists():
         raise FileNotFoundError(

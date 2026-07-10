@@ -656,6 +656,16 @@ class TestLoadConfig:
         assert cfg.dataset.source["release_dir"] == str(project_root / "dataset" / "bobsl")
         assert cfg.paths.videos == str(project_root / "dataset" / "bobsl" / "videos")
 
+    def test_base_dataset_configs_load_except_how2sign(self, project_root):
+        import signdata.datasets
+        from signdata.registry import DATASET_REGISTRY
+
+        base_dir = project_root / "configs" / "base" / "datasets"
+        configs = sorted(base_dir.glob("*.yaml"))
+        loaded_names = {load_config(str(path)).dataset.name for path in configs}
+
+        assert loaded_names == set(DATASET_REGISTRY) - {"how2sign"}
+
     def test_load_lsa64_requires_explicit_release_dir_or_paths_videos(self, tmp_path):
         import signdata.datasets
 

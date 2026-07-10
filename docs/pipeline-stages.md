@@ -28,11 +28,16 @@ the existing manifest before continuing to downstream stages.
 Handles dataset acquisition.
 
 - YouTube-ASL reads `dataset.source.video_ids_file`, downloads videos into `paths.videos`, and downloads transcript JSON into `paths.transcripts`.
+- OpenASL reads `dataset.source.manifest_tsv` and downloads raw YouTube videos by `yid`.
+- WLASL and MS-ASL validate local preprocessed clips by default; `download_mode=download_missing` fetches missing raw source videos.
 - How2Sign does not download data; it validates that local inputs exist.
+- Local-release datasets such as BOBSL/BSL-1K, AUTSL, LSA64, SLoVo, CSL, and RWTH-PHOENIX-Weather validate local files. CSL and RWTH-PHOENIX-Weather can materialize frame folders into `.mp4` clips.
 
 Key config paths:
 
 - `dataset.source.video_ids_file`
+- `dataset.source.manifest_tsv`
+- `dataset.source.release_dir`
 - `dataset.source.download_format`
 - `dataset.source.languages`
 - `dataset.source.rate_limit`
@@ -43,10 +48,15 @@ Key config paths:
 Builds or loads the base manifest.
 
 - YouTube-ASL parses transcript JSON into a manifest.
+- OpenASL maps the official TSV columns into canonical rows and optionally merges `dataset.source.bbox_json`.
+- Local-release adapters discover videos/annotations and write canonical TSV rows with `SAMPLE_ID`, `VIDEO_ID`, `REL_PATH` where needed, timing columns, text/gloss labels, split labels, and dataset-specific metadata.
 - How2Sign loads an existing CSV from `paths.manifest` or `dataset.source.manifest_csv`.
 
 Key config paths:
 
+- `dataset.source.manifest_csv`
+- `dataset.source.manifest_tsv`
+- `dataset.source.annotations_csv`
 - `dataset.source.max_text_length`
 - `dataset.source.min_duration`
 - `dataset.source.max_duration`

@@ -47,7 +47,7 @@ Use this default layout:
 
 ```text
 src/signdata/datasets/
-├── _shared/                  # Dataset-ingestion helpers only
+├── _ingestion/               # Dataset-ingestion helpers only
 │   ├── availability.py
 │   ├── classmap.py
 │   ├── media.py
@@ -80,7 +80,7 @@ Add more files only when needed:
 
 ### Shared Helper Rule
 
-- If a helper is used only by dataset ingestion or manifest building, put it in `src/signdata/datasets/_shared/`.
+- If a helper is used only by dataset ingestion or manifest building, put it in `src/signdata/datasets/_ingestion/`.
 - If a helper is generic to the pipeline, processors, or outputs, keep it in `src/signdata/utils/`.
 
 ### Minimal Template

@@ -73,7 +73,8 @@ class TestRealRegistrations:
         assert "wlasl" in DATASET_REGISTRY
         assert "msasl" in DATASET_REGISTRY
         assert "csl" in DATASET_REGISTRY
-        assert len(DATASET_REGISTRY) >= 6
+        assert "slovo" in DATASET_REGISTRY
+        assert len(DATASET_REGISTRY) >= 7
 
     def test_processors_registered(self):
         import signdata.processors  # noqa: F401
