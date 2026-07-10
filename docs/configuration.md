@@ -186,16 +186,18 @@ Relative file paths in `dataset.source`, such as `video_ids_file`, `manifest_csv
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | `bool` | `true` | Run the processing stage |
-| `processor` | `"video2pose"` \| `"video2crop"` | `"video2pose"` | Main processor |
+| `processor` | `"video2pose"` \| `"video2crop"` \| `"video2compression"` \| `"video2parts"` | `"video2pose"` | Main processor |
 | `detection` | `"yolo"` \| `"mediapipe"` \| `"mmdet"` \| `"null"` | `"null"` | Detection backend |
-| `pose` | `"mediapipe"` \| `"mmpose"` \| `null` | `null` | Pose backend; required for `video2pose` |
+| `pose` | `"mediapipe"` \| `"mmpose"` \| `null` | `null` | Pose backend; required for `video2pose` and `video2parts` |
 | `sample_rate` | `float?` | `0.5` | `null` = native FPS, `0 < value < 1` = keep ratio, `value >= 1` = absolute FPS |
 | `max_workers` | `int` | `1` | Worker count used by processors and post-processors |
 | `detection_config` | backend-specific model | `null` | Required for non-`null` detection backends |
-| `pose_config` | backend-specific model | `null` | Required for `video2pose` |
+| `pose_config` | backend-specific model | `null` | Required for `video2pose` and `video2parts` |
 | `video_config` | `VideoProcessingConfig?` | auto-created for `video2crop` | Crop/output settings for `video2crop` |
+| `parts_config` | `PartsProcessingConfig?` | auto-created for `video2parts` | SignMusketeers-style part stream settings |
 
 `video2pose` requires both `processing.pose` and `processing.pose_config`.
+`video2parts` requires `processing.pose: mediapipe` and `processing.pose_config`.
 `video2crop` auto-fills a default `processing.video_config` when omitted.
 
 ### `sample_rate` semantics
@@ -292,6 +294,17 @@ source FPS. It does not upsample or invent frames.
 | `codec` | `str` | `"libx264"` | ffmpeg video codec for cropped outputs |
 | `padding` | `float` | `0.0` | Extra crop padding around the detected bbox |
 | `resize` | `list[int]?` | `null` | Optional `[width, height]` resize after crop |
+
+## `processing.parts_config`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `crop_size` | `int` | `224` | Output size for face and hand crop streams |
+| `bbox_scale` | `float` | `1.2` | Scale factor applied to face/hand landmark boxes |
+| `codec` | `str` | `"mp4v"` | OpenCV fourcc used for part-stream MP4 files |
+| `missing_value` | `float` | `-1.0` | Fill value for missing body pose and bboxes |
+| `store_crops` | `"mp4"` | `"mp4"` | Current crop storage mode |
+| `store_features` | `bool` | `false` | Reserved for a later DINO feature-cache stage; `true` is rejected for now |
 
 ## `post_processing`
 

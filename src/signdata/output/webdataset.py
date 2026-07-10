@@ -175,8 +175,28 @@ class WebDatasetOutput(BaseOutput):
                     with open(clip_path, "rb") as f:
                         sample["mp4"] = f.read()
 
+                elif processor == "video2parts":
+                    if not raw_dir:
+                        skipped += 1
+                        continue
+                    sample_dir = raw_dir / str(sample_id)
+                    paths = {
+                        "face_mp4": sample_dir / "face.mp4",
+                        "left_hand_mp4": sample_dir / "left_hand.mp4",
+                        "right_hand_mp4": sample_dir / "right_hand.mp4",
+                        "pose_npz": sample_dir / "pose.npz",
+                        "json": sample_dir / "meta.json",
+                    }
+                    if not all(path.exists() for path in paths.values()):
+                        skipped += 1
+                        continue
+                    for ext, path in paths.items():
+                        with open(path, "rb") as f:
+                            sample[ext] = f.read()
+
                 sample["txt"] = caption
-                sample["json"] = json.dumps(meta).encode("utf-8")
+                if "json" not in sample:
+                    sample["json"] = json.dumps(meta).encode("utf-8")
 
                 sink.write(sample)
                 written += 1

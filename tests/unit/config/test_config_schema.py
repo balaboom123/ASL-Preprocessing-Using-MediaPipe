@@ -12,6 +12,7 @@ from signdata.config.schema import (
     MediaPipePoseConfig,
     NormalizeConfig,
     OutputConfig,
+    PartsProcessingConfig,
     PathsConfig,
     PostProcessingConfig,
     ProcessingConfig,
@@ -102,6 +103,39 @@ class TestProcessingConfig:
         )
         assert isinstance(p.pose_config, MediaPipePoseConfig)
         assert p.pose_config.model_complexity == 1
+
+    def test_video2parts_valid(self):
+        p = ProcessingConfig(
+            processor="video2parts",
+            detection="null",
+            pose="mediapipe",
+            pose_config={"model_complexity": 1},
+        )
+        assert isinstance(p.pose_config, MediaPipePoseConfig)
+        assert isinstance(p.parts_config, PartsProcessingConfig)
+        assert p.parts_config.crop_size == 224
+
+    def test_video2parts_requires_mediapipe(self):
+        with pytest.raises(ValidationError, match="requires pose=mediapipe"):
+            ProcessingConfig(
+                processor="video2parts",
+                detection="null",
+                pose="mmpose",
+                pose_config={
+                    "pose_model_config": "pose.py",
+                    "pose_model_checkpoint": "pose.pth",
+                },
+            )
+
+    def test_video2parts_rejects_feature_cache_flag(self):
+        with pytest.raises(ValidationError, match="feature-cache"):
+            ProcessingConfig(
+                processor="video2parts",
+                detection="null",
+                pose="mediapipe",
+                pose_config={"model_complexity": 1},
+                parts_config={"store_features": True},
+            )
 
     def test_detection_config_validated_yolo(self):
         p = ProcessingConfig(

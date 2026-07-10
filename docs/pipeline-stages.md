@@ -16,6 +16,7 @@
 | `dataset.manifest` | manifest TSV/CSV at `paths.manifest` | `dataset.manifest: true` |
 | `processing.video2pose` | raw landmarks at `{paths.output}/{run_name}/raw/{sample_id}.npy` | `processing.enabled: true` and `processing.processor: video2pose` |
 | `processing.video2crop` | cropped clips at `{paths.output}/{run_name}/raw/{sample_id}.mp4` | `processing.enabled: true` and `processing.processor: video2crop` |
+| `processing.video2parts` | part streams at `{paths.output}/{run_name}/raw/{sample_id}/` | `processing.enabled: true` and `processing.processor: video2parts` |
 | `post_processing.normalize` | normalized landmarks at `{paths.output}/{run_name}/normalized/{sample_id}.npy` | `post_processing.enabled: true` and `normalize` in `post_processing.recipes` |
 | `output.webdataset` | shards at `{paths.webdataset}/{run_name}/shard-000000.tar` | `output.enabled: true` and `output.type: webdataset` |
 
@@ -110,6 +111,31 @@ Key config paths:
 - `processing.video_config.resize`
 - `processing.sample_rate`
 
+## `processing.video2parts`
+
+Builds the SignMusketeers-style representation from MediaPipe Holistic output:
+
+```text
+{paths.output}/{run_name}/raw/{sample_id}/face.mp4
+{paths.output}/{run_name}/raw/{sample_id}/left_hand.mp4
+{paths.output}/{run_name}/raw/{sample_id}/right_hand.mp4
+{paths.output}/{run_name}/raw/{sample_id}/pose.npz
+{paths.output}/{run_name}/raw/{sample_id}/meta.json
+```
+
+`pose.npz` contains `body_pose`, frame timing/index arrays, per-stream bboxes,
+and validity flags. The three MP4 files are synchronized 224 x 224 crop streams
+by default.
+
+Key config paths:
+
+- `processing.pose: mediapipe`
+- `processing.pose_config`
+- `processing.parts_config.crop_size`
+- `processing.parts_config.bbox_scale`
+- `processing.parts_config.codec`
+- `processing.sample_rate`
+
 ## `post_processing.normalize`
 
 Reads raw landmark arrays from:
@@ -145,6 +171,9 @@ Packages the manifest plus the active artifact directory into shards:
 
 - `video2pose` packages normalized `.npy` files when present, otherwise raw `.npy`.
 - `video2crop` packages raw `.mp4` files from `{paths.output}/{run_name}/raw/`.
+- `video2parts` packages `face_mp4`, `left_hand_mp4`, `right_hand_mp4`,
+  `pose_npz`, `json`, and `txt` per sample so standard WebDataset readers
+  group every modality under one key.
 
 ## See Also
 

@@ -1,0 +1,44 @@
+dataset:
+  name: how2sign
+  download: true
+  manifest: true
+  source:
+    manifest_csv: dataset/how2sign/text/how2sign_realigned_val.csv
+    split: val
+    sign_language: ase
+    spoken_language: en
+    country: US
+    license: CC-BY-NC-4.0
+
+processing:
+  enabled: true
+  processor: video2parts
+  detection: "null"
+  pose: mediapipe
+  sample_rate: 25
+  max_workers: 1
+  pose_config:
+    model_complexity: 1
+    min_detection_confidence: 0.5
+    min_tracking_confidence: 0.5
+    refine_face_landmarks: true
+    batch_size: 16
+  parts_config:
+    crop_size: 224
+    bbox_scale: 1.2
+    codec: mp4v
+    missing_value: -1.0
+
+post_processing:
+  enabled: false
+
+output:
+  enabled: true
+  type: webdataset
+
+run_name: signmusketeers_parts
+
+paths:
+  root: dataset/how2sign
+  videos: dataset/how2sign/videos
+  manifest: dataset/how2sign/how2sign_realigned_val.csv

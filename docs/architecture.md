@@ -54,6 +54,7 @@ The pipeline runner dispatches to the processor specified by
 
 - `video2pose` — video → pose landmarks (.npy), using detection + pose backends
 - `video2crop` — video → cropped video (.mp4), using detection + `src/signdata/processors/video/ffmpeg.py`
+- `video2parts` — video → face/hand crop streams plus upper-body pose, using MediaPipe Holistic
 
 Post-processing then runs entries from `config.post_processing.recipes`. The
 built-in recipe is `normalize`.

@@ -71,6 +71,23 @@ class VideoProcessingConfig(BaseModel):
     resize: Optional[List[int]] = None
 
 
+class PartsProcessingConfig(BaseModel):
+    crop_size: int = Field(default=224, gt=0)
+    bbox_scale: float = Field(default=1.2, gt=0)
+    codec: str = "mp4v"
+    missing_value: float = -1.0
+    store_crops: Literal["mp4"] = "mp4"
+    store_features: bool = False
+
+    @model_validator(mode="after")
+    def validate_supported_modes(self):
+        if self.store_features:
+            raise ValueError(
+                "parts_config.store_features is reserved for a future feature-cache stage"
+            )
+        return self
+
+
 # --- Stage configs ---
 
 class DatasetConfig(BaseModel):
@@ -82,7 +99,12 @@ class DatasetConfig(BaseModel):
 
 class ProcessingConfig(BaseModel):
     enabled: bool = True
-    processor: Literal["video2pose", "video2crop", "video2compression"] = "video2pose"
+    processor: Literal[
+        "video2pose",
+        "video2crop",
+        "video2compression",
+        "video2parts",
+    ] = "video2pose"
     detection: Literal["yolo", "mediapipe", "mmdet", "null"] = "null"
     pose: Optional[Literal["mediapipe", "mmpose"]] = None
 
@@ -100,6 +122,7 @@ class ProcessingConfig(BaseModel):
         MediaPipePoseConfig, MMPosePoseConfig, dict,
     ]] = None
     video_config: Optional[VideoProcessingConfig] = None
+    parts_config: Optional[Union[PartsProcessingConfig, dict]] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -229,10 +252,12 @@ class ProcessingConfig(BaseModel):
                 f"detection={self.detection!r} requires detection_config"
             )
 
-        # video2pose requires pose + pose_config
-        if self.processor == "video2pose":
+        # video2pose/video2parts require pose + pose_config
+        if self.processor in ("video2pose", "video2parts"):
             if not self.pose:
-                raise ValueError("processing.pose is required for video2pose")
+                raise ValueError(f"processing.pose is required for {self.processor}")
+            if self.processor == "video2parts" and self.pose != "mediapipe":
+                raise ValueError("video2parts currently requires pose=mediapipe")
             pose_cls = POSE_CONFIG_MAP.get(self.pose)
             if pose_cls and self.pose_config is not None:
                 if isinstance(self.pose_config, dict):
@@ -241,6 +266,12 @@ class ProcessingConfig(BaseModel):
                 raise ValueError(
                     f"pose={self.pose!r} requires pose_config"
                 )
+
+        if self.processor == "video2parts":
+            if isinstance(self.parts_config, dict):
+                self.parts_config = PartsProcessingConfig(**self.parts_config)
+            elif self.parts_config is None:
+                self.parts_config = PartsProcessingConfig()
 
         # video2crop / video2compression require video_config (defaults if omitted)
         if self.processor in ("video2crop", "video2compression") and not self.video_config:

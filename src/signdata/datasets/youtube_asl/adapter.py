@@ -42,6 +42,10 @@ class YouTubeASLDataset(DatasetAdapter):
         )
         return context
 
+    @staticmethod
+    def _process_segments(*args, **kwargs):
+        return _manifest._process_segments(*args, **kwargs)
+
     def _download_transcripts(self, video_id_file, transcript_dir, source):
         return _source._download_transcripts(
             video_id_file, transcript_dir, source, self.logger
