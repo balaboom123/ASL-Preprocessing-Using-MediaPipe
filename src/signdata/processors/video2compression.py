@@ -11,61 +11,29 @@ frame.  Unlike video2crop, this processor:
 
 import gc
 import logging
-import os
 from pathlib import Path
 from typing import List, Optional, Tuple
-
-import cv2
 
 from .base import BaseProcessor
 from .detection import create_detector
 from .detection.base import Detection
-from .video.ffmpeg import FfmpegSamplingParams, iter_ffmpeg_frame_batches, clip_and_crop
+from .video.ffmpeg import clip_and_crop, iter_ffmpeg_frame_batches
 from ..registry import register_processor
-from ..utils.manifest import resolve_video_path
+from ..utils.manifest import resolve_video_path, row_value
+from ..utils.video import get_video_duration
 
 logger = logging.getLogger(__name__)
 
 
-def _get_video_duration(video_path: str) -> float:
-    """Return video duration in seconds via OpenCV."""
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        return 0.0
-    fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
-    frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
-    cap.release()
-    if fps <= 0:
-        return 0.0
-    return frame_count / fps
-
-
-def _get_row_value(row, column: str) -> str:
-    """Return a manifest value as a stripped string, or an empty string."""
-    if column not in row.index:
-        return ""
-    value = row.get(column)
-    if value is None:
-        return ""
-    value_str = str(value).strip()
-    if not value_str or value_str.lower() == "nan":
-        return ""
-    return value_str
-
-
 def _get_output_relpath(row) -> Path:
     """Choose a stable video-level output path from a manifest row."""
-    rel_path = _get_row_value(row, "REL_PATH")
+    rel_path = row_value(row, "REL_PATH")
     if rel_path:
         return Path(rel_path).with_suffix(".mp4")
 
-    video_name = _get_row_value(row, "VIDEO_NAME")
-    if video_name:
-        return Path(f"{video_name}.mp4")
-
-    video_id = _get_row_value(row, "VIDEO_ID")
-    if video_id:
-        return Path(f"{video_id}.mp4")
+    stem = row_value(row, "VIDEO_NAME") or row_value(row, "VIDEO_ID")
+    if stem:
+        return Path(f"{stem}.mp4")
 
     raise ValueError(
         "video2compression requires one of REL_PATH, VIDEO_NAME, or VIDEO_ID "
@@ -158,29 +126,25 @@ class Video2CompressionProcessor(BaseProcessor):
 
         # Create building blocks only after inputs are known
         detector = create_detector(cfg.detection, cfg.detection_config)
-        ffmpeg_params = FfmpegSamplingParams(
-            sample_rate=None,  # preserve native FPS — no resampling
-        )
-
         processed = skipped = errors = 0
 
         try:
             for video_path, output_relpath in tasks:
-                output_path = str(output_dir / output_relpath)
+                output_path = output_dir / output_relpath
                 output_label = str(output_relpath)
 
                 # Skip existing (unless force_all)
-                if not getattr(context, 'force_all', False) and os.path.exists(output_path):
+                if not context.force_all and output_path.exists():
                     skipped += 1
                     continue
 
                 try:
-                    if not os.path.exists(video_path):
+                    if not Path(video_path).exists():
                         self.logger.warning("Video not found: %s", video_path)
                         errors += 1
                         continue
 
-                    duration = _get_video_duration(video_path)
+                    duration = get_video_duration(video_path)
                     if duration <= 0:
                         self.logger.warning("Cannot read duration: %s", video_path)
                         errors += 1
@@ -192,7 +156,7 @@ class Video2CompressionProcessor(BaseProcessor):
 
                     # Pass 1: stream frames for detection (whole video)
                     for frames in iter_ffmpeg_frame_batches(
-                        video_path, 0.0, duration, ffmpeg_params,
+                        video_path, 0.0, duration, None,
                         batch_size=batch_size,
                     ):
                         decoded_frames += len(frames)
@@ -213,8 +177,8 @@ class Video2CompressionProcessor(BaseProcessor):
                     # Pass 2: crop whole video with union bbox
                     ok = clip_and_crop(
                         video_path, 0.0, duration,
-                        bbox, ffmpeg_params, cfg.video_config,
-                        output_path,
+                        bbox, None, cfg.video_config,
+                        str(output_path),
                     )
                     if ok:
                         processed += 1

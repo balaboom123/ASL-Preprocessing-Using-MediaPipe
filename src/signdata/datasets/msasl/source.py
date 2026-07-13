@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Literal
@@ -55,16 +54,14 @@ def load_split_json(ann_dir: Path, split: str) -> List[Dict]:
     json_path = ann_dir / f"MSASL_{split}.json"
     if not json_path.exists():
         raise FileNotFoundError(f"MS-ASL annotation file not found: {json_path}")
-    with open(json_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return json.loads(json_path.read_text(encoding="utf-8"))
 
 
 def load_classes_json(ann_dir: Path) -> Any:
     json_path = ann_dir / "MSASL_classes.json"
     if not json_path.exists():
         raise FileNotFoundError(f"MS-ASL classes JSON not found: {json_path}")
-    with open(json_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return json.loads(json_path.read_text(encoding="utf-8"))
 
 
 def get_selected_splits(source: MSASLSourceConfig) -> tuple[str, ...]:
@@ -111,7 +108,7 @@ def download_missing(
             "paths.videos is required for MS-ASL. Set it in your config YAML."
         )
 
-    os.makedirs(video_dir, exist_ok=True)
+    Path(video_dir).mkdir(parents=True, exist_ok=True)
 
     ann_dir = Path(source.annotations_dir)
     load_classes_json(ann_dir)
@@ -135,7 +132,7 @@ def download_missing(
             "errors": 0,
             "skipped": len(all_video_ids),
         }
-        report_dir = os.path.join(config.paths.root, "acquire_report")
+        report_dir = Path(config.paths.root) / "acquire_report"
         write_acquire_report(report_dir, stats, missing=[])
         return stats
 
@@ -149,15 +146,14 @@ def download_missing(
         concurrent_fragments=source.concurrent_fragments,
         log=log,
     )
-    missing = result.pop("missing")
     stats = {
         "total": len(all_video_ids),
         "downloaded": result["downloaded"],
         "errors": result["errors"],
         "skipped": len(existing),
     }
-    report_dir = os.path.join(config.paths.root, "acquire_report")
-    write_acquire_report(report_dir, stats, missing)
+    report_dir = Path(config.paths.root) / "acquire_report"
+    write_acquire_report(report_dir, stats, result["missing"])
 
     if source.availability_policy == "fail_fast" and result["errors"] > 0:
         raise RuntimeError(

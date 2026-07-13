@@ -27,8 +27,6 @@ processing:
 
 post_processing:
   enabled: true
-  recipes:
-    - normalize
   normalize:
     keypoint_preset: mediapipe_553_to_85
     mode: xy_isotropic_z_minmax
@@ -36,7 +34,6 @@ post_processing:
 
 output:
   enabled: true
-  type: webdataset
 
 run_name: default
 

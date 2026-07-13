@@ -8,7 +8,6 @@ Covers:
 
 import logging
 import sys
-from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
@@ -16,11 +15,6 @@ import numpy as np
 
 import pytest
 import torch
-
-PROJECT_ROOT = next(
-    path for path in Path(__file__).resolve().parents if (path / "src").is_dir()
-)
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 
 # ---------------------------------------------------------------------------

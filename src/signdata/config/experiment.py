@@ -1,35 +1,29 @@
-"""Experiment config schema and loader.
+"""Experiment config schema and loader."""
 
-An experiment is an ordered list of pipeline jobs, each referencing a
-job config YAML with optional per-job overrides.  This enables
-multi-dataset or multi-extractor research workflows in a single command.
-
-Example experiment YAML::
-
-    name: "YouTube-ASL Baseline Reproduction"
-    jobs:
-      - config: jobs/youtube_asl/mediapipe.yaml
-        overrides:
-          processing.sample_rate: null
-          normalize.mask_landmark_level: true
-      - config: jobs/youtube_asl/mmpose.yaml
-        overrides:
-          extractor.device: "cuda:1"
-"""
-
-import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 class JobEntry(BaseModel):
     """A single pipeline job within an experiment."""
 
     config: str  # path to job YAML (relative to configs/ or absolute)
-    overrides: Dict[str, Any] = {}
+    overrides: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("overrides")
+    @classmethod
+    def require_flat_overrides(
+        cls, overrides: dict[str, Any]
+    ) -> dict[str, Any]:
+        if any(
+            "." not in key and isinstance(value, dict)
+            for key, value in overrides.items()
+        ):
+            raise ValueError("Experiment overrides must use dot-separated keys")
+        return overrides
 
 
 class ExperimentConfig(BaseModel):
@@ -43,35 +37,7 @@ class ExperimentConfig(BaseModel):
 
     name: str
     description: str = ""
-    jobs: List[JobEntry]
-
-
-def _flatten_overrides(
-    d: Dict[str, Any], prefix: str = "",
-) -> Dict[str, Any]:
-    """Flatten a possibly-nested dict into dot-separated key → value pairs.
-
-    Supports both formats in experiment YAML::
-
-        # Flat (dot-separated keys) — preferred
-        overrides:
-          processing.sample_rate: null
-
-        # Nested — also accepted
-        overrides:
-          processing:
-            sample_rate: null
-
-    Both produce ``{"processing.sample_rate": None}``.
-    """
-    result: Dict[str, Any] = {}
-    for k, v in d.items():
-        key = f"{prefix}.{k}" if prefix else k
-        if isinstance(v, dict):
-            result.update(_flatten_overrides(v, key))
-        else:
-            result[key] = v
-    return result
+    jobs: list[JobEntry] = Field(min_length=1)
 
 
 def load_experiment(yaml_path: str) -> ExperimentConfig:
@@ -87,37 +53,25 @@ def load_experiment(yaml_path: str) -> ExperimentConfig:
     Returns:
         Validated :class:`ExperimentConfig` with resolved job paths.
     """
-    yaml_path = os.path.abspath(yaml_path)
-    experiment_dir = Path(yaml_path).parent
+    yaml_path = Path(yaml_path).resolve()
+    experiment_dir = yaml_path.parent
 
-    # Determine configs root for resolving job config paths.
-    # Walk up from experiment_dir to find a ``configs/`` ancestor.
-    # This handles any nesting depth under configs/:
-    #   configs/experiments/foo.yaml           → configs/
-    #   configs/experiments/a/b/c/foo.yaml     → configs/
-    # If no ``configs/`` ancestor exists, fall back to experiment_dir.
-    configs_root = experiment_dir
-    cursor = experiment_dir
-    while cursor != cursor.parent:
-        if cursor.name == "configs":
-            configs_root = cursor
-            break
-        cursor = cursor.parent
+    configs_root = next(
+        (
+            path
+            for path in (experiment_dir, *experiment_dir.parents)
+            if path.name == "configs"
+        ),
+        experiment_dir,
+    )
 
-    with open(yaml_path, "r", encoding="utf-8") as f:
-        raw = yaml.safe_load(f) or {}
+    raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
 
-    if "name" not in raw:
-        raise ValueError("Experiment config must specify a 'name' field")
-    if "jobs" not in raw or not raw["jobs"]:
-        raise ValueError("Experiment config must have at least one job")
-
-    experiment = ExperimentConfig(**raw)
+    experiment = ExperimentConfig.model_validate(raw)
 
     # Resolve relative job config paths
     for job in experiment.jobs:
-        if not os.path.isabs(job.config):
-            resolved = configs_root / job.config
-            job.config = str(resolved)
+        if not Path(job.config).is_absolute():
+            job.config = str(configs_root / job.config)
 
     return experiment

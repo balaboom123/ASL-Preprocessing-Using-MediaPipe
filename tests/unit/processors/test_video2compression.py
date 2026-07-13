@@ -7,25 +7,43 @@ Covers:
   - registration
 """
 
-import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 
-PROJECT_ROOT = next(
-    path for path in Path(__file__).resolve().parents if (path / "src").is_dir()
-)
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
-
 from signdata.config.schema import Config
 from signdata.datasets.how2sign import How2SignDataset
 from signdata.pipeline.context import PipelineContext
 from signdata.processors.detection.base import Detection
+from signdata.processors.video import ffmpeg
 from signdata.processors.video2compression import Video2CompressionProcessor
 import signdata.processors  # noqa: F401 – trigger registrations
 from signdata.registry import PROCESSOR_REGISTRY
+
+
+def test_video_metadata_releases_capture(monkeypatch):
+    class Capture:
+        released = False
+
+        def isOpened(self):
+            return True
+
+        def get(self, prop):
+            return {
+                ffmpeg.cv2.CAP_PROP_FRAME_WIDTH: 640,
+                ffmpeg.cv2.CAP_PROP_FRAME_HEIGHT: 480,
+                ffmpeg.cv2.CAP_PROP_FPS: 30,
+            }[prop]
+
+        def release(self):
+            self.released = True
+
+    capture = Capture()
+    monkeypatch.setattr(ffmpeg.cv2, "VideoCapture", lambda _: capture)
+
+    assert ffmpeg._video_metadata("video.mp4") == (640, 480, 30.0)
+    assert capture.released
 
 
 class _FakeDetector:
@@ -94,7 +112,7 @@ class TestVideo2CompressionProcessor:
             "signdata.processors.video2compression.create_detector",
             return_value=fake_detector,
         ), patch(
-            "signdata.processors.video2compression._get_video_duration",
+            "signdata.processors.video2compression.get_video_duration",
             return_value=12.5,
         ), patch(
             "signdata.processors.video2compression.iter_ffmpeg_frame_batches",
@@ -117,11 +135,13 @@ class TestVideo2CompressionProcessor:
         assert frame_iter_args[0] == str(videos_dir / "cam_1.mp4")
         assert frame_iter_args[1] == 0.0
         assert frame_iter_args[2] == 12.5
+        assert frame_iter_args[3] is None
 
         crop_args = crop_mock.call_args.args
         assert crop_args[0] == str(videos_dir / "cam_1.mp4")
         assert crop_args[1] == 0.0
         assert crop_args[2] == 12.5
+        assert crop_args[4] is None
         assert crop_args[6].endswith("compressed/cam_1.mp4")
 
     def test_rel_path_output_preserves_relative_structure(self, tmp_path):
@@ -153,7 +173,7 @@ class TestVideo2CompressionProcessor:
             "signdata.processors.video2compression.create_detector",
             return_value=fake_detector,
         ), patch(
-            "signdata.processors.video2compression._get_video_duration",
+            "signdata.processors.video2compression.get_video_duration",
             return_value=5.0,
         ), patch(
             "signdata.processors.video2compression.iter_ffmpeg_frame_batches",
@@ -203,7 +223,7 @@ class TestVideo2CompressionProcessor:
             "signdata.processors.video2compression.create_detector",
             return_value=fake_detector,
         ), patch(
-            "signdata.processors.video2compression._get_video_duration",
+            "signdata.processors.video2compression.get_video_duration",
             return_value=5.0,
         ), patch(
             "signdata.processors.video2compression.iter_ffmpeg_frame_batches",

@@ -85,7 +85,7 @@ class TestCSLValidateConfig:
         with pytest.raises(ValueError, match="release_dir|paths.root"):
             CSLDataset.validate_config(cfg)
 
-    def test_invalid_variant_raises(self, tmp_path):
+    def test_removed_variant_rejected(self, tmp_path):
         cfg = Config(
             dataset={
                 "name": "csl",
@@ -149,7 +149,6 @@ class TestCSLSourceConfig:
         source = CSLDataset().get_source_config(cfg)
         assert isinstance(source, CSLSourceConfig)
         assert source.release_dir == str(tmp_path)
-        assert source.variant == "continuous_2015"
         assert source.protocol == "split_i"
         assert source.split == "all"
         assert source.prepare_mode == "materialize_missing"

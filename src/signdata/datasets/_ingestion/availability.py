@@ -1,46 +1,52 @@
-"""Dataset-ingestion availability helpers.
-
-These helpers are used exclusively by dataset adapters during the
-download and build_manifest stages.  The pipeline-level ``filter_available``
-function and the ``AvailabilityPolicy`` type remain in
-``signdata.utils.availability``.
-
-Policies:
-    fail_fast          -- raise on any missing video/file
-    drop_unavailable   -- remove rows with missing files from manifest
-    mark_unavailable   -- keep all rows, add ``AVAILABLE`` bool column
-"""
+"""Dataset-ingestion availability helpers."""
 
 import json
 import logging
-import os
 from pathlib import Path
-from typing import Dict, Iterable, List, Set, Union
+from typing import Literal
 
 import pandas as pd
 
-# Re-export AvailabilityPolicy from its canonical definition so adapters
-# only need to import from this module.
-from ...utils.availability import AvailabilityPolicy  # noqa: F401
-
 logger = logging.getLogger(__name__)
 
-_VIDEO_EXTENSIONS = ("mp4", "webm", "mkv", "avi", "mov")
+AvailabilityPolicy = Literal["fail_fast", "drop_unavailable", "mark_unavailable"]
+_VIDEO_EXTENSIONS = {".mp4", ".webm", ".mkv", ".avi", ".mov"}
 
 
-def _iter_video_files(directory: Union[str, Path], recursive: bool) -> Iterable[Path]:
-    base_dir = Path(directory)
-    for ext in _VIDEO_EXTENSIONS:
-        pattern = f"**/*.{ext}" if recursive else f"*.{ext}"
-        yield from base_dir.glob(pattern)
-
-
-def get_existing_video_ids(directory: str, recursive: bool = False) -> Set[str]:
+def get_existing_video_ids(
+    directory: str | Path, recursive: bool = False
+) -> set[str]:
     """Return set of stem IDs from video files with any common extension."""
-    ids: Set[str] = set()
-    for path in _iter_video_files(directory, recursive):
-        ids.add(path.stem)
-    return ids
+    directory = Path(directory)
+    paths = directory.rglob("*") if recursive else directory.glob("*")
+    return {
+        path.stem
+        for path in paths
+        if path.is_file() and path.suffix.lower() in _VIDEO_EXTENSIONS
+    }
+
+
+def _apply_policy(
+    df: pd.DataFrame,
+    is_available: pd.Series,
+    policy: AvailabilityPolicy,
+    item_name: str,
+) -> pd.DataFrame:
+    if policy == "mark_unavailable":
+        result = df.copy()
+        result["AVAILABLE"] = is_available
+        return result
+
+    missing_count = int((~is_available).sum())
+    if policy == "drop_unavailable" and missing_count:
+        result = df[is_available].reset_index(drop=True)
+        logger.info(
+            "Dropped %d rows with unavailable %s (%d remaining).",
+            missing_count, item_name, len(result),
+        )
+        return result
+
+    return df
 
 
 def apply_availability_policy(
@@ -73,43 +79,26 @@ def apply_availability_policy(
     is_available = df["VIDEO_ID"].isin(available_ids)
     missing_count = int((~is_available).sum())
 
-    if missing_count == 0:
-        if policy == "mark_unavailable":
-            df = df.copy()
-            df["AVAILABLE"] = True
-        return df
-
-    missing_ids = sorted(df.loc[~is_available, "VIDEO_ID"].unique())
-    logger.warning(
-        "%d rows reference %d unavailable VIDEO_IDs (policy=%s)",
-        missing_count, len(missing_ids), policy,
-    )
-
-    if policy == "fail_fast":
-        raise RuntimeError(
-            f"{len(missing_ids)} video(s) not found in {video_dir}. "
-            f"First 5: {missing_ids[:5]}. "
-            f"Set availability_policy to 'drop_unavailable' or "
-            f"'mark_unavailable' to continue without them."
+    if missing_count:
+        missing_ids = sorted(df.loc[~is_available, "VIDEO_ID"].unique())
+        logger.warning(
+            "%d rows reference %d unavailable VIDEO_IDs (policy=%s)",
+            missing_count, len(missing_ids), policy,
         )
+        if policy == "fail_fast":
+            raise RuntimeError(
+                f"{len(missing_ids)} video(s) not found in {video_dir}. "
+                f"First 5: {missing_ids[:5]}. "
+                f"Set availability_policy to 'drop_unavailable' or "
+                f"'mark_unavailable' to continue without them."
+            )
 
-    if policy == "drop_unavailable":
-        before = len(df)
-        df = df[is_available].reset_index(drop=True)
-        logger.info(
-            "Dropped %d rows with unavailable videos (%d remaining).",
-            before - len(df), len(df),
-        )
-    elif policy == "mark_unavailable":
-        df = df.copy()
-        df["AVAILABLE"] = is_available
-
-    return df
+    return _apply_policy(df, is_available, policy, "videos")
 
 
 def apply_availability_policy_paths(
     df: pd.DataFrame,
-    base_dir: Union[str, Path],
+    base_dir: str | Path,
     policy: AvailabilityPolicy,
     *,
     rel_path_col: str = "REL_PATH",
@@ -143,48 +132,35 @@ def apply_availability_policy_paths(
         return apply_availability_policy(df, str(base_dir), policy)
 
     is_available = df[rel_path_col].apply(
-        lambda p: (base_dir / str(p)).exists() if pd.notna(p) and str(p).strip() else False
+        lambda path: (
+            (base_dir / str(path)).exists()
+            if pd.notna(path) and str(path).strip()
+            else False
+        )
     )
     missing_count = int((~is_available).sum())
 
-    if missing_count == 0:
-        if policy == "mark_unavailable":
-            df = df.copy()
-            df["AVAILABLE"] = True
-        return df
-
-    logger.warning(
-        "%d rows reference unavailable files (policy=%s)",
-        missing_count, policy,
-    )
-
-    if policy == "fail_fast":
-        missing_paths = df.loc[~is_available, rel_path_col].head(5).tolist()
-        raise RuntimeError(
-            f"{missing_count} file(s) not found under {base_dir}. "
-            f"First 5: {missing_paths}. "
-            f"Set availability_policy to 'drop_unavailable' or "
-            f"'mark_unavailable' to continue without them."
+    if missing_count:
+        logger.warning(
+            "%d rows reference unavailable files (policy=%s)",
+            missing_count, policy,
         )
+        if policy == "fail_fast":
+            missing_paths = df.loc[~is_available, rel_path_col].head(5).tolist()
+            raise RuntimeError(
+                f"{missing_count} file(s) not found under {base_dir}. "
+                f"First 5: {missing_paths}. "
+                f"Set availability_policy to 'drop_unavailable' or "
+                f"'mark_unavailable' to continue without them."
+            )
 
-    if policy == "drop_unavailable":
-        before = len(df)
-        df = df[is_available].reset_index(drop=True)
-        logger.info(
-            "Dropped %d rows with unavailable files (%d remaining).",
-            before - len(df), len(df),
-        )
-    elif policy == "mark_unavailable":
-        df = df.copy()
-        df["AVAILABLE"] = is_available
-
-    return df
+    return _apply_policy(df, is_available, policy, "files")
 
 
 def write_acquire_report(
-    report_dir: str,
-    stats: Dict,
-    missing: List[Dict],
+    report_dir: str | Path,
+    stats: dict,
+    missing: list[dict],
 ) -> None:
     """Write acquire report files.
 
@@ -197,16 +173,12 @@ def write_acquire_report(
     missing : list of dict
         Each entry has ``VIDEO_ID`` and ``REASON`` keys.
     """
-    os.makedirs(report_dir, exist_ok=True)
-
-    report_path = os.path.join(report_dir, "download_report.json")
-    with open(report_path, "w", encoding="utf-8") as f:
-        json.dump(stats, f, indent=2)
-
-    missing_path = os.path.join(report_dir, "missing_videos.csv")
-    if missing:
-        pd.DataFrame(missing).to_csv(missing_path, index=False)
-    else:
-        pd.DataFrame(columns=["VIDEO_ID", "REASON"]).to_csv(
-            missing_path, index=False,
-        )
+    report_dir = Path(report_dir)
+    report_dir.mkdir(parents=True, exist_ok=True)
+    (report_dir / "download_report.json").write_text(
+        json.dumps(stats, indent=2), encoding="utf-8"
+    )
+    missing_rows = pd.DataFrame(missing)
+    if missing_rows.empty:
+        missing_rows = missing_rows.reindex(columns=["VIDEO_ID", "REASON"])
+    missing_rows.to_csv(report_dir / "missing_videos.csv", index=False)

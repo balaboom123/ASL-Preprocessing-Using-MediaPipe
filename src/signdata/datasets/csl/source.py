@@ -2,9 +2,9 @@
 
 import logging
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from .._ingestion.availability import AvailabilityPolicy
 from .._ingestion.media import materialize_frames_to_video
@@ -20,26 +20,25 @@ SPLIT_II_TEST_SENTENCES = set(range(95, 101))
 DEFAULT_FPS = 30.0
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv")
 FRAME_EXTENSIONS = (".jpg", ".jpeg", ".png", ".bmp")
-SUPPORTED_VARIANTS = {"continuous_2015"}
-SUPPORTED_PROTOCOLS = {"split_i", "split_ii"}
-SUPPORTED_SPLITS = {"all", "train", "test"}
-SUPPORTED_PREPARE_MODES = {"validate", "materialize_missing", "rematerialize_all"}
 REPETITIONS_PER_SIGNER = 5
 
 
 class CSLSourceConfig(BaseModel):
     """Typed config for the continuous CSL adapter."""
 
+    model_config = ConfigDict(extra="forbid")
+
     release_dir: str = ""
-    variant: str = "continuous_2015"
-    protocol: str = "split_i"
-    split: str = "all"
+    protocol: Literal["split_i", "split_ii"] = "split_i"
+    split: Literal["all", "train", "test"] = "all"
     split_spec_file: str = ""
     availability_policy: AvailabilityPolicy = "drop_unavailable"
     rgb_subdir: str = "color"
     corpus_file: str = ""
-    prepare_mode: str = "materialize_missing"
-    video_fps: float = DEFAULT_FPS
+    prepare_mode: Literal[
+        "validate", "materialize_missing", "rematerialize_all"
+    ] = "materialize_missing"
+    video_fps: float = Field(default=DEFAULT_FPS, gt=0)
 
 
 def get_source_config(config) -> CSLSourceConfig:
@@ -56,31 +55,6 @@ def resolve_release_dir(source: CSLSourceConfig, config) -> Path:
 
 def validate_source_config(source: CSLSourceConfig) -> None:
     """Validate adapter-level CSL source options."""
-    if source.video_fps <= 0:
-        raise ValueError(
-            f"Unsupported CSL video_fps: {source.video_fps!r}. "
-            "Expected a positive frame rate."
-        )
-    if source.variant not in SUPPORTED_VARIANTS:
-        raise ValueError(
-            f"Unsupported CSL variant: {source.variant!r}. "
-            f"Valid options: {sorted(SUPPORTED_VARIANTS)}."
-        )
-    if source.protocol not in SUPPORTED_PROTOCOLS:
-        raise ValueError(
-            f"Unsupported CSL protocol: {source.protocol!r}. "
-            f"Valid options: {sorted(SUPPORTED_PROTOCOLS)}."
-        )
-    if source.split not in SUPPORTED_SPLITS:
-        raise ValueError(
-            f"Unsupported CSL split: {source.split!r}. "
-            f"Valid options: {sorted(SUPPORTED_SPLITS)}."
-        )
-    if source.prepare_mode not in SUPPORTED_PREPARE_MODES:
-        raise ValueError(
-            f"Unsupported CSL prepare_mode: {source.prepare_mode!r}. "
-            f"Valid options: {sorted(SUPPORTED_PREPARE_MODES)}."
-        )
     if source.split_spec_file and not Path(source.split_spec_file).exists():
         raise ValueError(
             f"CSL split_spec_file not found: {source.split_spec_file}"
@@ -121,7 +95,7 @@ def resolve_rgb_dir(release_dir: Path, source: CSLSourceConfig) -> Path:
 
 
 def resolve_materialized_video_dir(config, release_dir: Path) -> Path:
-    raw = getattr(config.paths, "videos", "") or str(release_dir / "videos")
+    raw = config.paths.videos or str(release_dir / "videos")
     return Path(raw)
 
 
@@ -170,7 +144,6 @@ def iter_sample_frame_dirs(root: Path) -> Iterable[tuple[Path, Path]]:
 def prepare(source: CSLSourceConfig, config, log: logging.Logger) -> dict:
     """Validate or prepare a local CSL release for pipeline consumption."""
     release_dir = resolve_release_dir(source, config)
-    validate_source_config(source)
 
     if not str(release_dir).strip():
         raise FileNotFoundError(
@@ -294,7 +267,6 @@ def _build_prepare_stats(
         "release_dir": str(release_dir),
         "corpus_file": str(corpus_path),
         "runtime_video_dir": str(runtime_video_dir),
-        "variant": source.variant,
         "protocol": source.protocol,
         "mode": source.prepare_mode,
     }

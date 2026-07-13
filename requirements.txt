@@ -1,8 +1,4 @@
-# PyTorch CUDA wheels from official PyTorch index (choose your cuda with cuxxx)
---extra-index-url https://download.pytorch.org/whl/cuxxx
 torch>=2.0.1
-torchaudio>=2.0.2
-torchvision>=0.15.2
 
 yt-dlp>=2025.6.30
 youtube-transcript-api==1.1.1
@@ -11,12 +7,8 @@ numpy==1.26.4
 pandas==2.3.0
 opencv-python==4.11.0.86
 mediapipe==0.10.21
-psutil==7.0.0
 ftfy==6.3.1
-matplotlib==3.9.4
 pyyaml==6.0.3
 pydantic==2.12.5
-webdataset==1.0.2
 ultralytics>=8.4.24  # verified for official YOLO11/YOLO26 asset aliases
-mmpose==1.3.2
 pytest==9.0.2

@@ -491,7 +491,6 @@ class TestLoadConfig:
 
         assert cfg.dataset.name == "autsl"
         assert cfg.dataset.source["release_dir"] == str(project_root / "dataset" / "autsl")
-        assert cfg.dataset.source["variant"] == "challenge_2021"
         assert cfg.dataset.source["modality"] == "rgb"
         assert cfg.dataset.source["allow_unlabeled"] is False
         assert cfg.processing.processor == "video2pose"
@@ -569,7 +568,6 @@ class TestLoadConfig:
 
         assert cfg.dataset.name == "csl"
         assert cfg.dataset.source["release_dir"] == str(project_root / "dataset" / "csl")
-        assert cfg.dataset.source["variant"] == "continuous_2015"
         assert cfg.dataset.source["prepare_mode"] == "materialize_missing"
         assert cfg.processing.processor == "video2pose"
         assert cfg.processing.pose == "mediapipe"

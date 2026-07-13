@@ -31,7 +31,6 @@ post_processing:
 
 output:
   enabled: true
-  type: webdataset
 
 run_name: default
 

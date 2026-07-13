@@ -17,8 +17,6 @@ class TestKeypointPresetsData:
     def test_mediapipe_553_to_85_count(self):
         preset = KEYPOINT_PRESETS["mediapipe_553_to_85"]
         assert len(preset["indices"]) == 85
-        assert preset["source_keypoints"] == 553
-        assert preset["target_keypoints"] == 85
 
     def test_mediapipe_553_to_85_bounds(self):
         indices = KEYPOINT_PRESETS["mediapipe_553_to_85"]["indices"]
@@ -27,8 +25,6 @@ class TestKeypointPresetsData:
     def test_mediapipe_543_to_83_count(self):
         preset = KEYPOINT_PRESETS["mediapipe_543_to_83"]
         assert len(preset["indices"]) == 83
-        assert preset["source_keypoints"] == 543
-        assert preset["target_keypoints"] == 83
 
     def test_mediapipe_543_to_83_bounds(self):
         indices = KEYPOINT_PRESETS["mediapipe_543_to_83"]["indices"]
@@ -37,8 +33,6 @@ class TestKeypointPresetsData:
     def test_mmpose_133_to_85_count(self):
         preset = KEYPOINT_PRESETS["mmpose_133_to_85"]
         assert len(preset["indices"]) == 85
-        assert preset["source_keypoints"] == 133
-        assert preset["target_keypoints"] == 85
 
     def test_mmpose_133_to_85_bounds(self):
         indices = KEYPOINT_PRESETS["mmpose_133_to_85"]["indices"]
@@ -53,18 +47,10 @@ class TestKeypointPresetsData:
             )
 
     def test_all_presets_have_required_keys(self):
-        required = {"description", "source_keypoints", "target_keypoints", "indices"}
+        required = {"description", "indices"}
         for name, preset in KEYPOINT_PRESETS.items():
             assert required <= set(preset.keys()), (
                 f"Preset '{name}' missing keys: {required - set(preset.keys())}"
-            )
-
-    def test_target_matches_index_count(self):
-        """target_keypoints should match the actual number of indices."""
-        for name, preset in KEYPOINT_PRESETS.items():
-            assert preset["target_keypoints"] == len(preset["indices"]), (
-                f"Preset '{name}': target_keypoints={preset['target_keypoints']} "
-                f"but has {len(preset['indices'])} indices"
             )
 
 

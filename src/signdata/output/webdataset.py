@@ -2,18 +2,12 @@
 
 import io
 import json
-import os
+import logging
 import tarfile
-import time
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
-import pandas as pd
-
-from .base import BaseOutput
-from ..registry import register_output
-from ..utils.manifest import read_manifest, get_timing_columns
+from ..utils.manifest import get_timing_columns, read_manifest, row_value
 
 
 class _ShardWriter:
@@ -44,28 +38,26 @@ class _ShardWriter:
     def _open_shard(self):
         if self._tar is not None:
             self._tar.close()
-        self._tar = tarfile.open(str(self._shard_path()), "w")
+        self._tar = tarfile.open(self._shard_path(), "w")
         self._count = 0
         self._size = 0
 
     def _next_shard(self):
-        self._tar.close()
         self._shard_idx += 1
         self._open_shard()
 
     def _add_bytes(self, name: str, data: bytes):
-        buf = io.BytesIO(data)
         info = tarfile.TarInfo(name=name)
         info.size = len(data)
-        info.mtime = int(time.time())
-        self._tar.addfile(info, buf)
+        info.mtime = 0
+        self._tar.addfile(info, io.BytesIO(data))
         self._size += len(data)
 
     def write(self, sample: dict):
         key = sample["__key__"]
-        if self._count >= self.max_count:
-            self._next_shard()
-        elif self.max_size and self._size >= self.max_size:
+        if self._count >= self.max_count or (
+            self.max_size and self._size >= self.max_size
+        ):
             self._next_shard()
 
         for ext, value in sample.items():
@@ -92,21 +84,29 @@ class _ShardWriter:
         return self._shard_idx + 1
 
 
-@register_output("webdataset")
-class WebDatasetOutput(BaseOutput):
+class WebDatasetOutput:
     """Package pipeline outputs into WebDataset tar shards."""
 
-    name = "webdataset"
+    logger = logging.getLogger("signdata.output.webdataset")
+
+    def __init__(self, config):
+        self.config = config
 
     def run(self, context):
         cfg = self.config
-        output_dir = str(context.webdataset_dir)
-        os.makedirs(output_dir, exist_ok=True)
+        output_dir = context.webdataset_dir
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        processor = cfg.processing.processor
+        if processor not in {"video2pose", "video2crop", "video2parts"}:
+            raise ValueError(
+                f"WebDataset output does not support processor {processor!r}"
+            )
 
         # Read manifest
         df = context.manifest_df
         if df is None and context.manifest_path:
-            df = read_manifest(str(context.manifest_path), normalize_columns=True)
+            df = read_manifest(str(context.manifest_path))
 
         if df is None or df.empty:
             self.logger.warning("No manifest data, nothing to package.")
@@ -114,18 +114,12 @@ class WebDatasetOutput(BaseOutput):
             return context
 
         start_col, end_col = get_timing_columns(df)
-        sentence_col = "TEXT" if "TEXT" in df.columns else None
-
         output_config = cfg.output.config
         max_count = output_config.get("max_shard_count", 10000)
         max_size = output_config.get("max_shard_size")
 
-        # Determine processor mode for content packaging
-        processor = cfg.processing.processor
-
-        # Source directories
-        raw_dir = context.output_dir / "raw" if context.output_dir else None
-        norm_dir = context.output_dir / "normalized" if context.output_dir else None
+        raw_dir = context.output_dir / "raw"
+        norm_dir = context.output_dir / "normalized"
 
         written = skipped = 0
 
@@ -134,9 +128,7 @@ class WebDatasetOutput(BaseOutput):
                 sample_id = row.SAMPLE_ID
                 video_id = row.VIDEO_ID
 
-                caption = ""
-                if sentence_col and pd.notna(row.get(sentence_col)):
-                    caption = str(row[sentence_col])
+                caption = row_value(row, "TEXT")
 
                 meta = {
                     "video_id": str(video_id),
@@ -149,36 +141,32 @@ class WebDatasetOutput(BaseOutput):
                 sample = {"__key__": str(sample_id)}
 
                 if processor == "video2pose":
-                    # Prefer normalized, fallback to raw
-                    npy_path = None
-                    if norm_dir and (norm_dir / f"{sample_id}.npy").exists():
-                        npy_path = str(norm_dir / f"{sample_id}.npy")
-                    elif raw_dir and (raw_dir / f"{sample_id}.npy").exists():
-                        npy_path = str(raw_dir / f"{sample_id}.npy")
+                    npy_path = next(
+                        (
+                            path
+                            for path in (
+                                norm_dir / f"{sample_id}.npy",
+                                raw_dir / f"{sample_id}.npy",
+                            )
+                            if path.exists()
+                        ),
+                        None,
+                    )
 
                     if not npy_path:
                         skipped += 1
                         continue
 
-                    arr = np.load(npy_path)
-                    buf = io.BytesIO()
-                    np.save(buf, arr)
-                    sample["npy"] = buf.getvalue()
+                    sample["npy"] = npy_path.read_bytes()
 
                 elif processor == "video2crop":
-                    clip_path = None
-                    if raw_dir:
-                        clip_path = str(raw_dir / f"{sample_id}.mp4")
-                    if not clip_path or not os.path.exists(clip_path):
+                    clip_path = raw_dir / f"{sample_id}.mp4"
+                    if not clip_path.exists():
                         skipped += 1
                         continue
-                    with open(clip_path, "rb") as f:
-                        sample["mp4"] = f.read()
+                    sample["mp4"] = clip_path.read_bytes()
 
                 elif processor == "video2parts":
-                    if not raw_dir:
-                        skipped += 1
-                        continue
                     sample_dir = raw_dir / str(sample_id)
                     paths = {
                         "face_mp4": sample_dir / "face.mp4",
@@ -191,12 +179,11 @@ class WebDatasetOutput(BaseOutput):
                         skipped += 1
                         continue
                     for ext, path in paths.items():
-                        with open(path, "rb") as f:
-                            sample[ext] = f.read()
+                        sample[ext] = path.read_bytes()
 
                 sample["txt"] = caption
                 if "json" not in sample:
-                    sample["json"] = json.dumps(meta).encode("utf-8")
+                    sample["json"] = json.dumps(meta)
 
                 sink.write(sample)
                 written += 1

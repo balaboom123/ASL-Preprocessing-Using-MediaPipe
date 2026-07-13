@@ -4,7 +4,6 @@ dataset:
   manifest: true
   source:
     release_dir: dataset/slovo
-    variant: trimmed
     split: all
     class_map_mode: derive
     availability_policy: fail_fast

@@ -10,7 +10,9 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-This installs all dependencies needed for MediaPipe-based pose jobs, which work on CPU out of the box.
+This installs dependencies for MediaPipe pose jobs and the shipped CPU YOLO
+jobs. MMPose and MMDet are installed separately below because they require a
+matching CUDA and OpenMMLab stack.
 
 ## MMPose (GPU Required)
 

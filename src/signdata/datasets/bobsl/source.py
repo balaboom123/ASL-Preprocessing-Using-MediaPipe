@@ -86,7 +86,7 @@ def validate_release(
             "Download the BOBSL release first and set dataset.source.release_dir."
         )
 
-    video_dir = getattr(config.paths, "videos", "")
+    video_dir = config.paths.videos
     if not video_dir:
         raise ValueError(
             "paths.videos is required for BOBSL. Set it in your config YAML."
@@ -278,8 +278,7 @@ def resolve_annotation_path(
 
 def load_split_map(metadata_path: Path) -> Dict[str, str]:
     """Load episode-to-split mapping from BOBSL metadata JSON."""
-    with open(metadata_path, "r", encoding="utf-8") as handle:
-        raw = json.load(handle)
+    raw = json.loads(metadata_path.read_text(encoding="utf-8"))
 
     split_map: Dict[str, str] = {}
 

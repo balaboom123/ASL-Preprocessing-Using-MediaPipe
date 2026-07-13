@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -10,7 +9,7 @@ import pandas as pd
 
 from .._ingestion.availability import apply_availability_policy
 from .._ingestion.media import get_video_duration
-from ...utils.manifest import find_video_file
+from ...utils.manifest import find_video_file, write_manifest
 from .source import WLASLSourceConfig, iter_filtered_instances
 
 
@@ -26,8 +25,7 @@ def build(config, source: WLASLSourceConfig, log: logging.Logger) -> pd.DataFram
             f"Set dataset.source.metadata_json in your config YAML."
         )
 
-    with open(metadata_json, "r", encoding="utf-8") as f:
-        entries = json.load(f)
+    entries = json.loads(Path(metadata_json).read_text(encoding="utf-8"))
 
     records = _flatten_instances(entries, video_dir, source)
 
@@ -50,8 +48,7 @@ def build(config, source: WLASLSourceConfig, log: logging.Logger) -> pd.DataFram
     if video_dir and Path(video_dir).is_dir():
         df = apply_availability_policy(df, video_dir, source.availability_policy)
 
-    os.makedirs(os.path.dirname(manifest_path) or ".", exist_ok=True)
-    df.to_csv(manifest_path, sep="\t", index=False)
+    write_manifest(df, manifest_path)
     return df
 
 

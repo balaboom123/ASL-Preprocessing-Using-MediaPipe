@@ -2,50 +2,36 @@
 
 import logging
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Literal, Tuple
 
 import pandas as pd
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from .._ingestion.availability import AvailabilityPolicy
 from .._ingestion.media import materialize_frames_to_video
 
 ALL_SPLITS = ("train", "dev", "test")
-VALID_SPLITS = {*ALL_SPLITS, "all"}
-VALID_PREPARE_MODES = {"validate", "materialize_missing", "rematerialize_all"}
 
 
 class RWTHPhoenixWeatherSourceConfig(BaseModel):
     """Typed source config for the RWTH-PHOENIX-Weather adapter."""
 
+    model_config = ConfigDict(extra="forbid")
+
     release_dir: str = ""
-    variant: str = "phoenix_2014_t"
-    split: str = "all"
-    prepare_mode: str = "materialize_missing"
+    split: Literal["train", "dev", "test", "all"] = "all"
+    prepare_mode: Literal[
+        "validate", "materialize_missing", "rematerialize_all"
+    ] = "materialize_missing"
     availability_policy: AvailabilityPolicy = "drop_unavailable"
-    video_fps: float = 25.0
+    video_fps: float = Field(default=25.0, gt=0)
 
 
 def get_source_config(config) -> RWTHPhoenixWeatherSourceConfig:
     source_dict = dict(config.dataset.source)
-    if not source_dict.get("release_dir") and getattr(config.paths, "videos", ""):
+    if not source_dict.get("release_dir") and config.paths.videos:
         source_dict["release_dir"] = config.paths.videos
     return RWTHPhoenixWeatherSourceConfig(**source_dict)
-
-
-def validate_source_config(source: RWTHPhoenixWeatherSourceConfig) -> None:
-    if source.split not in VALID_SPLITS:
-        raise ValueError(
-            f"Unsupported PHOENIX split '{source.split}'. "
-            f"Expected one of {sorted(VALID_SPLITS)}."
-        )
-    if source.prepare_mode not in VALID_PREPARE_MODES:
-        raise ValueError(
-            f"Unsupported PHOENIX prepare_mode '{source.prepare_mode}'. "
-            f"Expected one of {sorted(VALID_PREPARE_MODES)}."
-        )
-    if source.video_fps <= 0:
-        raise ValueError("PHOENIX video_fps must be positive.")
 
 
 def find_corpus_csvs(release_dir: Path, split: str) -> List[Path]:
@@ -129,7 +115,6 @@ def prepare(
 ) -> dict:
     """Validate the PHOENIX release directory and optionally materialise videos."""
     release_dir = Path(source.release_dir)
-    validate_source_config(source)
 
     if not release_dir.exists():
         raise FileNotFoundError(
@@ -147,7 +132,7 @@ def prepare(
         return {"validated": True, "mode": mode}
 
     overwrite = mode == "rematerialize_all"
-    video_dir = Path(config.paths.videos) if getattr(config.paths, "videos", "") else release_dir
+    video_dir = Path(config.paths.videos) if config.paths.videos else release_dir
 
     total_materialized = 0
     total_errors = 0

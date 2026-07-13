@@ -7,9 +7,8 @@ python -m signdata run <job.yaml> [--override key=value ...]
 python -m signdata experiment <experiment.yaml>
 ```
 
-`src/signdata/__main__.py` imports `signdata.datasets`,
-`signdata.processors`, `signdata.post_processors`, and `signdata.output`
-to populate registries before any config is executed.
+`src/signdata/__main__.py` imports `signdata.datasets` and
+`signdata.processors` to populate registries before any config is executed.
 
 ## Run Flow
 
@@ -38,14 +37,12 @@ job under `configs/jobs/...` with its own override set.
 
 ## Registries
 
-Four global registries live in `src/signdata/registry.py`:
+Two global registries live in `src/signdata/registry.py`:
 
 | Decorator | Registry | Base class |
 |---|---|---|
 | `@register_dataset(name)` | `DATASET_REGISTRY` | `DatasetAdapter` |
 | `@register_processor(name)` | `PROCESSOR_REGISTRY` | `BaseProcessor` |
-| `@register_post_processor(name)` | `POST_PROCESSOR_REGISTRY` | `BasePostProcessor` |
-| `@register_output(name)` | `OUTPUT_REGISTRY` | `BaseOutput` |
 
 ## Processing
 
@@ -56,8 +53,7 @@ The pipeline runner dispatches to the processor specified by
 - `video2crop` — video → cropped video (.mp4), using detection + `src/signdata/processors/video/ffmpeg.py`
 - `video2parts` — video → face/hand crop streams plus upper-body pose, using MediaPipe Holistic
 
-Post-processing then runs entries from `config.post_processing.recipes`. The
-built-in recipe is `normalize`.
+When enabled, post-processing runs landmark normalization.
 
 ## PipelineContext
 
@@ -73,7 +69,6 @@ built-in recipe is `normalize`.
 | `manifest_path` | `Path?` | Current manifest path |
 | `manifest_df` | `DataFrame?` | Loaded manifest |
 | `force_all` | `bool` | Rerun outputs even if files already exist |
-| `completed_stages` | `list[str]` | Completed stage names |
 | `stats` | `dict[str, dict]` | Per-stage counters |
 
 The runner resolves run-scoped output paths once at startup, then each stage
@@ -82,15 +77,14 @@ reads and writes through `PipelineContext` instead of hardcoding artifact paths.
 ## Package Layout
 
 - `src/signdata/config/` contains Pydantic config schemas (`schema.py`), YAML loading and path resolution (`loader.py`), and experiment config parsing (`experiment.py`).
-- `src/signdata/pipeline/` contains the pipeline runner (`runner.py`), shared pipeline context (`context.py`), stage checkpoint/success markers (`checkpoint.py`), and the experiment runner (`experiment.py`).
+- `src/signdata/pipeline/` contains the pipeline runner (`runner.py`), shared pipeline context (`context.py`), and experiment runner (`experiment.py`).
 - `src/signdata/datasets/` contains dataset adapter packages.
 - `src/signdata/datasets/_ingestion/` contains dataset-ingestion helpers used only during `dataset.download` and `dataset.manifest`. Must NOT be imported by processors, pipeline runner, or output modules — use `signdata.utils` for those.
 - `src/signdata/processors/detection/` contains detector backends and bbox utilities.
 - `src/signdata/processors/pose/` contains pose estimators and presets.
-- `src/signdata/processors/sampler/` contains frame sampling utilities for `video2pose`.
 - `src/signdata/processors/video/` contains shared video helpers such as `ffmpeg.py`.
 - `src/signdata/processors/` contains top-level processors such as `video2pose` and `video2crop`.
-- `src/signdata/post_processors/` contains post-processing recipes such as `normalize`.
+- `src/signdata/post_processors/` contains landmark normalization.
 - `src/signdata/output/` contains output writers such as `webdataset`.
 - `src/signdata/utils/` contains pipeline-wide helpers for video I/O, file discovery, manifest reading/validation, and other generic logic.
 - `resources/` contains shipped model config assets.

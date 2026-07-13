@@ -1,8 +1,6 @@
 """YAML config loading."""
 
 import copy
-import os
-import warnings
 from pathlib import Path, PureWindowsPath
 from typing import Any, Dict, List, Optional
 
@@ -33,8 +31,7 @@ def _normalize_dataset_shorthand(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 def _load_yaml_mapping(yaml_path: str) -> Dict[str, Any]:
     """Load a YAML file and require a mapping at the top level."""
-    with open(yaml_path, "r", encoding="utf-8") as f:
-        raw = yaml.safe_load(f)
+    raw = yaml.safe_load(Path(yaml_path).read_text(encoding="utf-8"))
 
     if raw is None:
         return {}
@@ -56,10 +53,10 @@ def _resolve_base_config_paths(base_ref: Any, config_path: Path) -> List[Path]:
             f"'base' must be a string or list[str] in config: {config_path}"
         )
 
-    resolved: List[Path] = []
-    for ref in refs:
-        resolved.append(_resolve_path(ref, config_path.parent).resolve())
-    return resolved
+    return [
+        _resolve_path(ref, config_path.parent).resolve()
+        for ref in refs
+    ]
 
 
 def _load_raw_config(
@@ -67,10 +64,7 @@ def _load_raw_config(
     stack: Optional[List[Path]] = None,
 ) -> Dict[str, Any]:
     """Load a YAML config with optional recursive base-config merging."""
-    config_path = _coerce_path(yaml_path)
-    if not config_path.is_absolute():
-        config_path = Path(os.path.abspath(str(config_path)))
-    config_path = config_path.resolve()
+    config_path = _coerce_path(yaml_path).resolve()
     stack = stack or []
 
     if config_path in stack:
@@ -117,30 +111,6 @@ def _resolve_path(path_str: str, root: Path) -> Path:
     return path if path.is_absolute() else root / path
 
 
-PACKAGE_DIR_ALIASES = ("signdata", "sltpipe", "sign_prep")
-RESOURCE_CONFIG_ROOTS = {
-    "pose_model_config": ("resources", "pose_models"),
-    "det_model_config": ("resources", "detection_models"),
-}
-RESOURCE_CHECKPOINT_ATTRS = {"pose_model_checkpoint", "det_model_checkpoint"}
-SOURCE_PATH_KEYS = {
-    "video_ids_file",
-    "manifest_tsv",
-    "manifest_csv",
-    "release_dir",
-    "class_map_file",
-    "annotations_csv",
-    "annotations_dir",
-    "metadata_json",
-    "annotation_json",
-    "bbox_json",
-    "corpus_file",
-    "split_spec_file",
-    "class_id_file",
-    "train_labels_file",
-    "val_labels_file",
-    "test_labels_file",
-}
 SOURCE_PATH_SUFFIXES = (
     "_file",
     "_dir",
@@ -151,114 +121,20 @@ SOURCE_PATH_SUFFIXES = (
 )
 
 
-def _alternate_package_dirs(path: Path) -> List[Path]:
-    """Return alternate package-dir candidates for migrated model assets."""
-    parts = list(path.parts)
-    for i in range(len(parts) - 1):
-        if parts[i] != "src":
-            continue
-        current = parts[i + 1]
-        if current not in PACKAGE_DIR_ALIASES:
-            continue
-
-        alternates = []
-        for candidate in PACKAGE_DIR_ALIASES:
-            if candidate == current:
-                continue
-            alt_parts = parts.copy()
-            alt_parts[i + 1] = candidate
-            alternates.append(Path(*alt_parts))
-        return alternates
-    return []
-
-
-def _alternate_resource_model_configs(
-    path: Path, project_root: Path, attr_name: str
-) -> List[Path]:
-    """Return resource-path candidates for legacy model config locations."""
-    if attr_name not in RESOURCE_CONFIG_ROOTS:
-        return []
-
-    parts = list(path.parts)
-    is_legacy_config_path = any(
-        parts[i] == "src"
-        and parts[i + 1] in PACKAGE_DIR_ALIASES
-        and parts[i + 2] == "models"
-        and parts[i + 3] == "configs"
-        for i in range(len(parts) - 4)
-    )
-    if not is_legacy_config_path:
-        return []
-
-    resource_root = project_root.joinpath(*RESOURCE_CONFIG_ROOTS[attr_name])
-    if not resource_root.exists():
-        return []
-
-    return sorted(
-        candidate
-        for candidate in resource_root.rglob(path.name)
-        if candidate.is_file()
-    )
-
-
-def _alternate_legacy_model_checkpoints(
-    path: Path, project_root: Path, attr_name: str
-) -> List[Path]:
-    """Return legacy checkpoint candidates for resource-path checkpoint refs."""
-    if attr_name not in RESOURCE_CHECKPOINT_ATTRS:
-        return []
-
-    parts = list(path.parts)
-    is_resource_checkpoint_path = any(
-        parts[i] == "resources"
-        and parts[i + 1] in {"pose_models", "detection_models"}
-        and parts[i + 3] == "checkpoints"
-        for i in range(len(parts) - 4)
-    )
-    if not is_resource_checkpoint_path:
-        return []
-
-    return [
-        project_root / "src" / package_dir / "models" / "checkpoints" / path.name
-        for package_dir in PACKAGE_DIR_ALIASES
-    ]
-
-
-def _resolve_model_path(path_str: str, project_root: Path, attr_name: str) -> str:
-    """Resolve model paths relative to project root with migration fallbacks."""
+def _resolve_model_path(path_str: str, project_root: Path) -> str:
+    """Resolve local model paths relative to project root."""
     if "://" in path_str or "::" in path_str:
         return path_str
-
-    resolved = _resolve_path(path_str, project_root)
-    alternate_paths = _alternate_package_dirs(resolved)
-    alternate_paths.extend(
-        _alternate_resource_model_configs(resolved, project_root, attr_name)
-    )
-    alternate_paths.extend(
-        _alternate_legacy_model_checkpoints(resolved, project_root, attr_name)
-    )
-
-    if not resolved.exists():
-        for alternate in alternate_paths:
-            if alternate.exists():
-                return str(alternate)
-
-    return str(resolved)
+    return str(_resolve_path(path_str, project_root))
 
 
 def _find_project_root(config_dir: Path) -> Path:
     """Resolve the project root for configs at any nesting depth."""
-    cursor = config_dir
-    while cursor != cursor.parent:
-        if cursor.name == "configs":
-            return cursor.parent
-        cursor = cursor.parent
-    return config_dir
-
-
-def _is_source_path_key(source_key: str) -> bool:
-    """Return True when *source_key* should resolve relative to project root."""
-    return source_key in SOURCE_PATH_KEYS or source_key.endswith(SOURCE_PATH_SUFFIXES)
+    configs_dir = next(
+        (path for path in (config_dir, *config_dir.parents) if path.name == "configs"),
+        None,
+    )
+    return configs_dir.parent if configs_dir else config_dir
 
 
 def resolve_paths(config: Config, project_root: Path) -> Config:
@@ -272,58 +148,37 @@ def resolve_paths(config: Config, project_root: Path) -> Config:
     root = _resolve_path(paths.root, project_root)
     paths.root = str(root)
 
-    run_name = config.run_name
-
-    if not paths.videos:
-        paths.videos = str(root / "videos")
-    else:
-        paths.videos = str(_resolve_path(paths.videos, project_root))
-
-    if not paths.transcripts:
-        paths.transcripts = str(root / "transcripts")
-    else:
-        paths.transcripts = str(_resolve_path(paths.transcripts, project_root))
-
-    if not paths.manifest:
-        paths.manifest = str(root / "manifest.csv")
-    else:
-        paths.manifest = str(_resolve_path(paths.manifest, project_root))
-
-    if not paths.output:
-        paths.output = str(root / "output")
-    else:
-        paths.output = str(_resolve_path(paths.output, project_root))
-
-    if not paths.webdataset:
-        paths.webdataset = str(root / "webdataset")
-    else:
-        paths.webdataset = str(_resolve_path(paths.webdataset, project_root))
+    for field, default in {
+        "videos": "videos",
+        "transcripts": "transcripts",
+        "manifest": "manifest.csv",
+        "output": "output",
+        "webdataset": "webdataset",
+    }.items():
+        value = getattr(paths, field)
+        resolved = _resolve_path(value, project_root) if value else root / default
+        setattr(paths, field, str(resolved))
 
     # Resolve source paths relative to project root
     source = config.dataset.source
-    for source_key, val in list(source.items()):
-        if _is_source_path_key(source_key) and isinstance(val, str) and val:
+    for source_key, val in source.items():
+        if source_key.endswith(SOURCE_PATH_SUFFIXES) and isinstance(val, str) and val:
             config.dataset.source[source_key] = str(_resolve_path(val, project_root))
 
     # Resolve model paths in detection_config and pose_config
     proc = config.processing
-    if proc.detection_config:
-        for attr in ("det_model_config", "det_model_checkpoint"):
-            val = getattr(proc.detection_config, attr, None)
+    for backend_config in (proc.detection_config, proc.pose_config):
+        if not backend_config:
+            continue
+        for attr in (
+            "det_model_config",
+            "det_model_checkpoint",
+            "pose_model_config",
+            "pose_model_checkpoint",
+        ):
+            val = getattr(backend_config, attr, None)
             if val:
-                setattr(
-                    proc.detection_config, attr,
-                    _resolve_model_path(val, project_root, attr),
-                )
-
-    if proc.pose_config:
-        for attr in ("pose_model_config", "pose_model_checkpoint"):
-            val = getattr(proc.pose_config, attr, None)
-            if val:
-                setattr(
-                    proc.pose_config, attr,
-                    _resolve_model_path(val, project_root, attr),
-                )
+                setattr(backend_config, attr, _resolve_model_path(val, project_root))
 
     return config
 
@@ -342,10 +197,7 @@ def load_config(
     4. CLI overrides (key=value pairs)
     5. Dict overrides (from experiment layer, already typed)
     """
-    config_path = _coerce_path(yaml_path)
-    if not config_path.is_absolute():
-        config_path = Path(os.path.abspath(str(config_path)))
-    config_path = config_path.resolve()
+    config_path = _coerce_path(yaml_path).resolve()
     config_dir = config_path.parent
 
     project_root = _find_project_root(config_dir)
@@ -357,15 +209,11 @@ def load_config(
             if "=" not in override:
                 raise ValueError(f"Override must be key=value, got: {override}")
             key, value = override.split("=", 1)
-            key, parsed_value = _normalize_legacy_sampling_override(
-                key, _parse_value(value),
-            )
-            _set_nested(raw, key, parsed_value)
+            _set_nested(raw, key, _parse_value(value))
 
     # Apply dict overrides (from experiment layer — values already typed)
     if dict_overrides:
         for key, value in dict_overrides.items():
-            key, value = _normalize_legacy_sampling_override(key, value)
             _set_nested(raw, key, value)
 
     raw = _normalize_dataset_shorthand(raw)
@@ -409,49 +257,8 @@ def _set_nested(d: Dict, key: str, value: Any) -> None:
     d[parts[-1]] = value
 
 
-def _normalize_legacy_sampling_override(key: str, value: Any) -> tuple[str, Any]:
-    """Translate legacy sampling override keys to sample_rate with warnings."""
-    if key == "processing.frame_skip":
-        frame_skip = int(value)
-        if frame_skip <= 0:
-            raise ValueError("processing.frame_skip must be a positive integer")
-        sample_rate = None if frame_skip == 1 else (1.0 / frame_skip)
-        warnings.warn(
-            "processing.frame_skip is deprecated and was mapped to "
-            f"processing.sample_rate={sample_rate!r}.",
-            FutureWarning,
-            stacklevel=2,
-        )
-        return "processing.sample_rate", sample_rate
-
-    if key == "processing.target_fps":
-        if value is not None and value <= 0:
-            raise ValueError("processing.target_fps must be positive or null")
-        warnings.warn(
-            "processing.target_fps is deprecated and was mapped to "
-            f"processing.sample_rate={value!r}.",
-            FutureWarning,
-            stacklevel=2,
-        )
-        return "processing.sample_rate", value
-
-    return key, value
-
-
 def _parse_value(value: str) -> Any:
     """Parse a string value to its appropriate Python type."""
-    if value.lower() == "true":
-        return True
-    if value.lower() == "false":
-        return False
-    if value.lower() == "none" or value.lower() == "null":
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        pass
-    try:
-        return float(value)
-    except ValueError:
-        pass
-    return value
+    if not value:
+        return value
+    return yaml.safe_load("null" if value.lower() == "none" else value)

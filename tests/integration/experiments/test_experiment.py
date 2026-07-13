@@ -3,7 +3,6 @@
 Covers:
   - ExperimentConfig / JobEntry schema validation
   - load_experiment() path resolution and error handling
-  - _flatten_overrides() for nested and flat dicts
   - ExperimentRunner orchestration (mocked pipeline)
   - CLI argument parsing for the experiment subcommand
   - load_config dict_overrides integration
@@ -20,7 +19,6 @@ from signdata.cli import parse_args
 from signdata.config.experiment import (
     ExperimentConfig,
     JobEntry,
-    _flatten_overrides,
     load_experiment,
 )
 from signdata.pipeline.experiment import ExperimentRunner, JobResult
@@ -57,6 +55,10 @@ class TestExperimentConfigSchema:
         assert len(cfg.jobs) == 2
         assert cfg.jobs[1].overrides == {"x": 1}
 
+    def test_jobs_cannot_be_empty(self):
+        with pytest.raises(ValueError, match="jobs"):
+            ExperimentConfig(name="empty", jobs=[])
+
     def test_job_defaults(self):
         job = JobEntry(config="test.yaml")
         assert job.overrides == {}
@@ -64,44 +66,20 @@ class TestExperimentConfigSchema:
     def test_job_with_overrides(self):
         job = JobEntry(
             config="test.yaml",
-            overrides={"processing.sample_rate": None, "extractor.device": "cuda:1"},
+            overrides={
+                "processing.sample_rate": None,
+                "processing.detection_config.device": "cuda:1",
+            },
         )
         assert job.overrides["processing.sample_rate"] is None
-        assert job.overrides["extractor.device"] == "cuda:1"
+        assert job.overrides["processing.detection_config.device"] == "cuda:1"
 
-
-# ── _flatten_overrides ────────────────────────────────────────────────
-
-class TestFlattenOverrides:
-    def test_already_flat(self):
-        d = {"processing.sample_rate": None, "extractor.device": "cuda:1"}
-        assert _flatten_overrides(d) == d
-
-    def test_nested_to_flat(self):
-        d = {"processing": {"sample_rate": None}}
-        result = _flatten_overrides(d)
-        assert result == {
-            "processing.sample_rate": None,
-        }
-
-    def test_deeply_nested(self):
-        d = {"source": {"text_processing": {"lowercase": True}}}
-        result = _flatten_overrides(d)
-        assert result == {"source.text_processing.lowercase": True}
-
-    def test_mixed_flat_and_nested(self):
-        d = {
-            "run_name": "exp1",
-            "processing": {"sample_rate": 30.0},
-        }
-        result = _flatten_overrides(d)
-        assert result == {
-            "run_name": "exp1",
-            "processing.sample_rate": 30.0,
-        }
-
-    def test_empty_dict(self):
-        assert _flatten_overrides({}) == {}
+    def test_nested_overrides_rejected(self):
+        with pytest.raises(ValueError, match="dot-separated keys"):
+            JobEntry(
+                config="test.yaml",
+                overrides={"processing": {"sample_rate": 30.0}},
+            )
 
 
 # ── load_experiment ───────────────────────────────────────────────────
@@ -114,6 +92,16 @@ class TestLoadExperiment:
         yaml_path = exp_dir / "test_experiment.yaml"
         yaml_path.write_text(yaml.dump(data))
         return str(yaml_path)
+
+    def test_repository_baseline_jobs_exist(self, project_root):
+        path = project_root / "configs" / "experiments" / "baseline_youtube_asl.yaml"
+        experiment = load_experiment(str(path))
+
+        assert [Path(job.config).name for job in experiment.jobs] == [
+            "mediapipe.yaml",
+            "mmpose.yaml",
+        ]
+        assert all(Path(job.config).is_file() for job in experiment.jobs)
 
     def test_basic_load(self, tmp_path):
         # Create a job config so the path exists
@@ -180,7 +168,7 @@ class TestLoadExperiment:
         path = self._write_experiment(tmp_path, {
             "name": "test",
         })
-        with pytest.raises(ValueError, match="at least one job"):
+        with pytest.raises(ValueError, match="jobs"):
             load_experiment(path)
 
     def test_empty_jobs_raises(self, tmp_path):
@@ -188,7 +176,7 @@ class TestLoadExperiment:
             "name": "test",
             "jobs": [],
         })
-        with pytest.raises(ValueError, match="at least one job"):
+        with pytest.raises(ValueError, match="jobs"):
             load_experiment(path)
 
     def test_non_experiments_dir_resolves_relative_to_parent(self, tmp_path):
@@ -361,29 +349,6 @@ class TestExperimentRunner:
 
     @patch("signdata.pipeline.experiment.PipelineRunner")
     @patch("signdata.pipeline.experiment.load_config")
-    def test_nested_overrides_flattened(self, mock_load, mock_runner_cls):
-        mock_context = MagicMock()
-        mock_context.stats = {}
-        mock_runner_cls.return_value.run.return_value = mock_context
-        mock_load.return_value = MagicMock()
-
-        exp = self._make_experiment([
-            JobEntry(
-                config="/path/a.yaml",
-                overrides={"processing": {"sample_rate": 30.0}},
-            ),
-        ])
-
-        runner = ExperimentRunner(exp)
-        runner.run()
-
-        mock_load.assert_called_once_with(
-            "/path/a.yaml",
-            dict_overrides={"processing.sample_rate": 30.0},
-        )
-
-    @patch("signdata.pipeline.experiment.PipelineRunner")
-    @patch("signdata.pipeline.experiment.load_config")
     def test_no_overrides_passes_none(self, mock_load, mock_runner_cls):
         mock_context = MagicMock()
         mock_context.stats = {}
@@ -531,23 +496,13 @@ class TestLoadConfigDictOverrides:
         config = load_config(path, dict_overrides=None)
         assert config.processing.sample_rate == 24.0
 
-    def test_legacy_sampling_override_migrated(self, tmp_path):
+    def test_removed_sampling_override_rejected(self, tmp_path):
         from signdata.config.loader import load_config
 
         path = self._write_job_config(tmp_path)
 
-        with pytest.warns(FutureWarning, match="processing.frame_skip is deprecated"):
-            config = load_config(path, dict_overrides={"processing.frame_skip": 2})
-        assert config.processing.sample_rate == 0.5
-
-    def test_legacy_sampling_cli_override_migrated(self, tmp_path):
-        from signdata.config.loader import load_config
-
-        path = self._write_job_config(tmp_path)
-
-        with pytest.warns(FutureWarning, match="processing.target_fps is deprecated"):
-            config = load_config(path, overrides=["processing.target_fps=12"])
-        assert config.processing.sample_rate == 12
+        with pytest.raises(ValueError, match="use processing.sample_rate"):
+            load_config(path, dict_overrides={"processing.frame_skip": 2})
 
     def test_dict_overrides_dataset_validated_after_override(self, tmp_path):
         """Overriding dataset via dict_overrides validates the overridden name."""

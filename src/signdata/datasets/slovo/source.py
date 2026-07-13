@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Literal
 
 import pandas as pd
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from .._ingestion.availability import AvailabilityPolicy
 
@@ -32,9 +32,10 @@ OPTIONAL_PASSTHROUGH = {
 class SlovoSourceConfig(BaseModel):
     """Typed config for the SLoVo adapter."""
 
+    model_config = ConfigDict(extra="forbid")
+
     release_dir: str = ""
     annotations_csv: str = ""
-    variant: str = "trimmed"
     split: Literal["all", "train", "test"] = "all"
     availability_policy: AvailabilityPolicy = "fail_fast"
     class_map_file: str = ""
@@ -109,7 +110,7 @@ def validate(source: SlovoSourceConfig, config, log: logging.Logger) -> dict:
         "SLoVo release directory validated: %s (%d annotation rows)",
         video_dir, row_count,
     )
-    return {"validated": True, "variant": source.variant, "rows_found": row_count}
+    return {"validated": True, "rows_found": row_count}
 
 
 def get_bundled_class_map_path(source: SlovoSourceConfig) -> Path:

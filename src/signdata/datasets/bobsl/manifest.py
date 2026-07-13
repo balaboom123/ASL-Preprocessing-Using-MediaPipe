@@ -2,13 +2,13 @@
 
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 import pandas as pd
 
 from .._ingestion.availability import apply_availability_policy_paths
+from ...utils.manifest import write_manifest
 from .source import (
     BOBSLSourceConfig,
     load_split_map,
@@ -72,8 +72,7 @@ def build(config, source: BOBSLSourceConfig, log: logging.Logger) -> pd.DataFram
             rel_path_col="REL_PATH",
         )
 
-    os.makedirs(os.path.dirname(manifest_path) or ".", exist_ok=True)
-    df.to_csv(manifest_path, sep="\t", index=False)
+    write_manifest(df, manifest_path)
     return df
 
 
@@ -347,8 +346,7 @@ def _read_isolated_records(path: Path) -> List[Dict[str, Any]]:
         return table.to_dict(orient="records")
 
     if path.suffix.lower() == ".json":
-        with open(path, "r", encoding="utf-8") as handle:
-            raw = json.load(handle)
+        raw = json.loads(path.read_text(encoding="utf-8"))
         return _flatten_json_records(raw)
 
     return []

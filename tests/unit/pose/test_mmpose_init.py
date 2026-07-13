@@ -1,47 +1,31 @@
-"""Tests for MMPoseExtractor.__init__ parameter handling.
-
-Only tests __init__ parameter handling — no GPU, mmpose, or real frames needed.
-"""
+"""Tests for MMPose extraction helpers without loading MMPose."""
 
 import numpy as np
 
 from signdata.processors.pose.mmpose import MMPoseExtractor
 
 
-class _Cfg:
-    bbox_threshold = 0.5
-    keypoint_threshold = 0.3
-    add_visible = True
-    batch_size = 16
+class TestMMPoseExtractor:
+    def test_process_batch_forwards_upstream_bboxes(self):
+        ext = MMPoseExtractor(object())
+        seen = []
+        ext.process_frame = lambda frame, bbox=None: seen.append(bbox)
+        bboxes = [np.ones((1, 4)), np.ones((1, 4)) * 2]
 
+        ext.process_batch([np.zeros((1, 1, 3))] * 2, bboxes=bboxes)
 
-class TestMMPoseInit:
-    def test_default_config(self):
-        """Duck-typed config creates extractor with expected attributes."""
+        assert seen[0] is bboxes[0]
+        assert seen[1] is bboxes[1]
 
-        ext = MMPoseExtractor(_Cfg())
-        assert ext.bbox_threshold == 0.5
-        assert ext.add_visible is True
-        assert ext.det_cat_id == 0
+    def test_process_batch_continues_after_frame_error(self):
+        ext = MMPoseExtractor(object())
 
-    def test_custom_bbox_threshold(self):
-        """Custom bbox_threshold is stored."""
+        def fail(frame, bbox=None):
+            raise RuntimeError("bad frame")
 
-        class _Cfg:
-            bbox_threshold = 0.7
-            keypoint_threshold = 0.3
-            add_visible = True
-            batch_size = 16
+        ext.process_frame = fail
 
-        ext = MMPoseExtractor(_Cfg())
-        assert ext.bbox_threshold == 0.7
-
-    def test_no_reduction_attributes(self):
-        """Extractor no longer has reduction-related attributes."""
-
-        ext = MMPoseExtractor(_Cfg())
-        assert not hasattr(ext, "apply_reduction")
-        assert not hasattr(ext, "keypoint_indices")
+        assert ext.process_batch([np.zeros((1, 1, 3))]) == [None]
 
     def test_pack_2d_mmpose_keypoints(self):
         """Pip MMPose whole-body 2D models pack as x, y, z=0, score."""
@@ -50,7 +34,7 @@ class TestMMPoseInit:
             keypoints = [[[10.0, 20.0], [30.0, 40.0]]]
             keypoint_scores = [[0.9, 0.8]]
 
-        packed = MMPoseExtractor(_Cfg())._pack_keypoints(
+        packed = MMPoseExtractor(object())._pack_keypoints(
             _Pred(),
             img_w=100,
             img_h=200,

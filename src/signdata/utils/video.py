@@ -5,26 +5,48 @@ Duration/FPS probing for dataset ingestion has moved to
 """
 
 import logging
-import os
-from glob import glob
+import subprocess
 from typing import List, Optional
 
 import cv2
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
-def validate_video_file(video_path: str) -> bool:
-    """Validate if a video file exists and can be opened by OpenCV."""
-    if not os.path.exists(video_path):
-        return False
+def get_video_duration(video_path: str) -> float:
+    """Return video duration in seconds, or 0.0 when unavailable."""
     try:
-        video_capture = cv2.VideoCapture(video_path)
-        is_valid = video_capture.isOpened()
-        video_capture.release()
-        return is_valid
+        cap = cv2.VideoCapture(video_path)
+        if cap.isOpened():
+            fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+            frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
+            cap.release()
+            if fps > 0 and frame_count > 0:
+                return frame_count / fps
     except Exception:
-        return False
+        pass
+
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "quiet",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                video_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return float(result.stdout.strip())
+    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
+        pass
+
+    logger.warning("Could not determine duration for %s", video_path)
+    return 0.0
 
 
 def resolve_effective_sample_fps(
@@ -59,16 +81,9 @@ class FPSSampler:
     """Frame sampler using native, ratio, or absolute-FPS semantics."""
 
     def __init__(self, src_fps: float, sample_rate: Optional[float]):
-        if sample_rate is None:
-            self.mode = "native"
-        elif 0 < sample_rate < 1:
-            self.mode = "ratio"
-        else:
-            self.mode = "fps"
-
         effective_fps = resolve_effective_sample_fps(src_fps, sample_rate)
-        self.target = src_fps if effective_fps is None else effective_fps
-        self.r = 1.0 if src_fps <= 0 else (self.target / max(src_fps, 1e-6))
+        target_fps = src_fps if effective_fps is None else effective_fps
+        self.r = 1.0 if src_fps <= 0 else target_fps / src_fps
         self.acc = 0.0
 
     def take(self) -> bool:
@@ -79,18 +94,41 @@ class FPSSampler:
             return True
         return False
 
-
-def get_video_filenames(directory: str, pattern: str = "*.mp4") -> List[str]:
-    """Retrieve video stems from a directory matching *pattern*."""
-    return [
-        os.path.splitext(os.path.basename(f))[0]
-        for f in glob(os.path.join(directory, pattern))
-    ]
+    def reset(self) -> None:
+        self.acc = 0.0
 
 
-def get_filenames(directory: str, pattern: str, extension: str) -> List[str]:
-    """Retrieve file stems from *directory* matching ``<pattern>.<extension>``."""
-    return [
-        os.path.splitext(os.path.basename(f))[0]
-        for f in glob(os.path.join(directory, f"{pattern}.{extension}"))
-    ]
+def read_sampled_frames(
+    video_path: str,
+    start_sec: float,
+    end_sec: float,
+    sampler: FPSSampler,
+    source_fps: Optional[float] = None,
+) -> List[np.ndarray]:
+    """Read sampled frames from a video segment."""
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return []
+
+    fps = source_fps or cap.get(cv2.CAP_PROP_FPS) or 0.0
+    if fps <= 0:
+        cap.release()
+        return []
+
+    start_frame = int(start_sec * fps)
+    end_frame = int(end_sec * fps)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+    sampler.reset()
+    frames = []
+    current = start_frame
+    while current <= end_frame:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        if sampler.take():
+            frames.append(frame)
+        current += 1
+
+    cap.release()
+    return frames

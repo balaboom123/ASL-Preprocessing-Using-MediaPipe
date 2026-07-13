@@ -3,14 +3,15 @@
 import logging
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class How2SignSourceConfig(BaseModel):
     """Typed config for How2Sign adapter."""
 
+    model_config = ConfigDict(extra="forbid")
+
     manifest_csv: str = ""
-    split: str = "all"
 
 
 def get_source_config(config) -> How2SignSourceConfig:

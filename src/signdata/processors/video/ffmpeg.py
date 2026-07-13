@@ -2,30 +2,37 @@
 
 import logging
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, List, Optional, Tuple
 
+import cv2
 import numpy as np
 
+from ...config.schema import VideoProcessingConfig
 from ...utils.video import resolve_effective_sample_fps
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class FfmpegSamplingParams:
-    """Shared ffmpeg parameters for consistent frame decoding across passes."""
-    sample_rate: Optional[float] = 0.5
+def _video_metadata(video_path: str) -> tuple[int, int, float] | None:
+    cap = cv2.VideoCapture(video_path)
+    try:
+        if not cap.isOpened():
+            return None
+        return (
+            int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+            float(cap.get(cv2.CAP_PROP_FPS) or 0.0),
+        )
+    finally:
+        cap.release()
 
 
 def ffmpeg_pipe_frames(
     video_path: str,
     start_sec: float,
     end_sec: float,
-    params: FfmpegSamplingParams,
-    width: int = 0,
-    height: int = 0,
+    sample_rate: Optional[float],
 ) -> List[np.ndarray]:
     """Decode frames from a video segment via ffmpeg pipe.
 
@@ -36,9 +43,7 @@ def ffmpeg_pipe_frames(
         video_path: Path to the video file.
         start_sec: Segment start time.
         end_sec: Segment end time.
-        params: Shared ffmpeg sampling parameters.
-        width: Frame width (0 = auto-detect from video).
-        height: Frame height (0 = auto-detect from video).
+        sample_rate: Shared sampling rate for both passes.
 
     Returns:
         List of BGR frames as numpy arrays.
@@ -46,8 +51,7 @@ def ffmpeg_pipe_frames(
     try:
         frames: List[np.ndarray] = []
         for batch in iter_ffmpeg_frame_batches(
-            video_path, start_sec, end_sec, params, batch_size=64,
-            width=width, height=height,
+            video_path, start_sec, end_sec, sample_rate, batch_size=64,
         ):
             frames.extend(batch)
         return frames
@@ -60,38 +64,27 @@ def iter_ffmpeg_frame_batches(
     video_path: str,
     start_sec: float,
     end_sec: float,
-    params: FfmpegSamplingParams,
+    sample_rate: Optional[float],
     batch_size: int,
-    width: int = 0,
-    height: int = 0,
 ) -> Iterator[List[np.ndarray]]:
     """Stream decoded frames from ffmpeg in bounded-size batches.
 
     Unlike :func:`ffmpeg_pipe_frames`, this function does not buffer the full
     rawvideo stream or the full decoded frame list in memory.
     """
-    import cv2
-
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
 
-    source_fps = 0.0
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
+    metadata = _video_metadata(video_path)
+    if metadata is None:
         return
-    try:
-        if width == 0 or height == 0:
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        source_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
-    finally:
-        cap.release()
+    width, height, source_fps = metadata
 
     if width <= 0 or height <= 0:
         return
 
     duration = end_sec - start_sec
-    effective_fps = resolve_effective_sample_fps(source_fps, params.sample_rate)
+    effective_fps = resolve_effective_sample_fps(source_fps, sample_rate)
 
     # -hide_banner + -nostats prevent ffmpeg from filling the stderr PIPE
     # buffer and deadlocking the streaming read loop below.
@@ -103,12 +96,8 @@ def iter_ffmpeg_frame_batches(
         "-t", str(duration),
     ]
 
-    vf_filters = []
     if effective_fps is not None:
-        vf_filters.append(f"fps={effective_fps}")
-
-    if vf_filters:
-        cmd.extend(["-vf", ",".join(vf_filters)])
+        cmd.extend(["-vf", f"fps={effective_fps}"])
 
     cmd.extend([
         "-f", "rawvideo",
@@ -172,8 +161,8 @@ def clip_and_crop(
     start_sec: float,
     end_sec: float,
     bbox: Tuple[float, float, float, float],
-    params: FfmpegSamplingParams,
-    video_config,
+    sample_rate: Optional[float],
+    video_config: VideoProcessingConfig,
     output_path: str,
 ) -> bool:
     """Pass 2: clip + crop a video segment using ffmpeg.
@@ -186,37 +175,33 @@ def clip_and_crop(
         start_sec: Segment start time.
         end_sec: Segment end time.
         bbox: (x1, y1, x2, y2) crop region in pixels.
-        params: Same FfmpegSamplingParams used in pass 1.
+        sample_rate: Same sampling rate used in pass 1.
         video_config: VideoProcessingConfig with codec, padding, resize.
         output_path: Output file path.
 
     Returns:
         True if successful.
     """
-    import cv2
     from ..detection.validation import apply_bbox_padding
 
     duration = end_sec - start_sec
 
-    # Get frame dimensions for padding calculation
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
+    metadata = _video_metadata(video_path)
+    if metadata is None:
         return False
-    frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    source_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
-    cap.release()
+    frame_w, frame_h, source_fps = metadata
 
     # Apply padding
-    padding = getattr(video_config, "padding", 0.0)
-    x1, y1, x2, y2 = apply_bbox_padding(bbox, padding, frame_w, frame_h)
+    x1, y1, x2, y2 = apply_bbox_padding(
+        bbox, video_config.padding, frame_w, frame_h
+    )
     crop_w = x2 - x1
     crop_h = y2 - y1
 
     if crop_w <= 0 or crop_h <= 0:
         return False
 
-    effective_fps = resolve_effective_sample_fps(source_fps, params.sample_rate)
+    effective_fps = resolve_effective_sample_fps(source_fps, sample_rate)
 
     # Build ffmpeg command
     cmd = [
@@ -231,14 +216,12 @@ def clip_and_crop(
         vf_filters.append(f"fps={effective_fps}")
     vf_filters.append(f"crop={crop_w}:{crop_h}:{x1}:{y1}")
 
-    resize = getattr(video_config, "resize", None)
-    if resize:
-        vf_filters.append(f"scale={resize[0]}:{resize[1]}")
+    if video_config.resize:
+        vf_filters.append(f"scale={video_config.resize[0]}:{video_config.resize[1]}")
 
     cmd.extend(["-vf", ",".join(vf_filters)])
 
-    codec = getattr(video_config, "codec", "libx264")
-    cmd.extend(["-c:v", codec, "-preset", "medium", "-crf", "15", "-an"])
+    cmd.extend(["-c:v", video_config.codec, "-preset", "medium", "-crf", "15", "-an"])
     cmd.extend(["-v", "error"])
     cmd.append(output_path)
 

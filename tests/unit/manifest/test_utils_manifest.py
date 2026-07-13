@@ -4,38 +4,12 @@ import pandas as pd
 import pytest
 
 from signdata.utils.manifest import (
-    REQUIRED_COLUMNS,
-    TIMING_COLUMNS,
-    LABEL_COLUMNS,
-    SPATIAL_COLUMNS,
-    METADATA_COLUMNS,
-    ALL_KNOWN_COLUMNS,
     _normalize_columns,
+    row_value,
     read_manifest,
-    validate_manifest,
-    has_timing,
     resolve_video_path,
     get_timing_columns,
 )
-
-
-# -----------------------------------------------------------------------
-# Column constants
-# -----------------------------------------------------------------------
-
-class TestColumnConstants:
-    def test_required_columns(self):
-        assert REQUIRED_COLUMNS == {"SAMPLE_ID", "VIDEO_ID"}
-
-    def test_timing_columns(self):
-        assert TIMING_COLUMNS == {"START", "END"}
-
-    def test_all_known_is_superset(self):
-        assert REQUIRED_COLUMNS < ALL_KNOWN_COLUMNS
-        assert TIMING_COLUMNS < ALL_KNOWN_COLUMNS
-        assert LABEL_COLUMNS < ALL_KNOWN_COLUMNS
-        assert SPATIAL_COLUMNS < ALL_KNOWN_COLUMNS
-        assert METADATA_COLUMNS < ALL_KNOWN_COLUMNS
 
 
 # -----------------------------------------------------------------------
@@ -92,6 +66,18 @@ class TestNormalizeColumns:
         assert len(text_cols) == 1
 
 
+class TestRowValue:
+    def test_missing_blank_and_nan_become_empty(self):
+        row = pd.Series({"BLANK": "  ", "NAN": float("nan")})
+        assert row_value(row, "MISSING") == ""
+        assert row_value(row, "BLANK") == ""
+        assert row_value(row, "NAN") == ""
+
+    def test_strips_present_value(self):
+        row = pd.Series({"URL": "  https://example.test/video  "})
+        assert row_value(row, "URL") == "https://example.test/video"
+
+
 # -----------------------------------------------------------------------
 # read_manifest
 # -----------------------------------------------------------------------
@@ -121,16 +107,6 @@ class TestReadManifest:
         assert "END" in df.columns
         assert "TEXT" in df.columns
 
-    def test_normalize_columns_false_preserves_legacy(self, tmp_path):
-        tsv = tmp_path / "manifest.csv"
-        tsv.write_text(
-            "VIDEO_NAME\tSENTENCE_NAME\tSTART_REALIGNED\tEND_REALIGNED\n"
-            "v1\ts1\t0.0\t1.0\n"
-        )
-        df = read_manifest(tsv, normalize_columns=False)
-        assert "VIDEO_NAME" in df.columns
-        assert "VIDEO_ID" not in df.columns
-
     def test_file_not_found(self, tmp_path):
         with pytest.raises(FileNotFoundError, match="Manifest file not found"):
             read_manifest(tmp_path / "nonexistent.csv")
@@ -140,93 +116,6 @@ class TestReadManifest:
         tsv.write_text("SAMPLE_ID\tVIDEO_ID\ns1\tv1\n")
         df = read_manifest(str(tsv))
         assert len(df) == 1
-
-
-# -----------------------------------------------------------------------
-# validate_manifest
-# -----------------------------------------------------------------------
-
-class TestValidateManifest:
-    def test_valid_manifest_no_issues(self):
-        df = pd.DataFrame({
-            "SAMPLE_ID": ["s1", "s2"],
-            "VIDEO_ID": ["v1", "v1"],
-            "START": [0.0, 1.0],
-            "END": [1.0, 2.0],
-        })
-        assert validate_manifest(df) == []
-
-    def test_missing_required_columns(self):
-        df = pd.DataFrame({"FOO": [1]})
-        issues = validate_manifest(df)
-        assert any("Missing required columns" in i for i in issues)
-
-    def test_missing_one_required_column(self):
-        df = pd.DataFrame({"SAMPLE_ID": ["s1"]})
-        issues = validate_manifest(df)
-        assert any("VIDEO_ID" in i for i in issues)
-
-    def test_timing_column_partial(self):
-        df = pd.DataFrame({
-            "SAMPLE_ID": ["s1"],
-            "VIDEO_ID": ["v1"],
-            "START": [0.0],
-        })
-        issues = validate_manifest(df)
-        assert any("END" in i for i in issues)
-
-    def test_duplicate_sample_id(self):
-        df = pd.DataFrame({
-            "SAMPLE_ID": ["s1", "s1", "s2"],
-            "VIDEO_ID": ["v1", "v1", "v2"],
-        })
-        issues = validate_manifest(df)
-        assert any("duplicate SAMPLE_ID" in i for i in issues)
-
-    def test_no_timing_is_valid(self):
-        """Manifest without START/END is valid (isolated signs)."""
-        df = pd.DataFrame({
-            "SAMPLE_ID": ["s1"],
-            "VIDEO_ID": ["v1"],
-        })
-        assert validate_manifest(df) == []
-
-
-# -----------------------------------------------------------------------
-# has_timing
-# -----------------------------------------------------------------------
-
-class TestHasTiming:
-    def test_true_with_valid_timing(self):
-        df = pd.DataFrame({"START": [0.0], "END": [1.0]})
-        assert has_timing(df) is True
-
-    def test_false_without_columns(self):
-        df = pd.DataFrame({"SAMPLE_ID": ["s1"]})
-        assert has_timing(df) is False
-
-    def test_false_with_all_null(self):
-        df = pd.DataFrame({"START": [None], "END": [None]})
-        assert has_timing(df) is False
-
-    def test_false_missing_end(self):
-        df = pd.DataFrame({"START": [0.0]})
-        assert has_timing(df) is False
-
-    def test_false_when_split_across_rows(self):
-        """START on one row, END on another — no complete interval."""
-        df = pd.DataFrame({
-            "START": [1.0, None],
-            "END": [None, 2.0],
-        })
-        assert has_timing(df) is False
-
-    def test_true_when_at_least_one_complete_row(self):
-        df = pd.DataFrame({
-            "START": [1.0, None],
-            "END": [2.0, None],
-        })
-        assert has_timing(df) is True
 
 
 # -----------------------------------------------------------------------
@@ -282,24 +171,7 @@ class TestGetTimingColumns:
         df = pd.DataFrame({"START": [0.0], "END": [1.0]})
         assert get_timing_columns(df) == ("START", "END")
 
-    def test_legacy_names(self):
-        df = pd.DataFrame({
-            "START_REALIGNED": [0.0],
-            "END_REALIGNED": [1.0],
-        })
-        assert get_timing_columns(df) == ("START_REALIGNED", "END_REALIGNED")
-
     def test_raises_on_missing(self):
         df = pd.DataFrame({"SAMPLE_ID": ["s1"]})
-        with pytest.raises(ValueError, match="No recognized timestamp columns"):
+        with pytest.raises(ValueError, match="No canonical timestamp columns"):
             get_timing_columns(df)
-
-    def test_canonical_preferred_over_legacy(self):
-        """If both START and START_REALIGNED exist, canonical wins."""
-        df = pd.DataFrame({
-            "START": [0.0],
-            "END": [1.0],
-            "START_REALIGNED": [0.5],
-            "END_REALIGNED": [1.5],
-        })
-        assert get_timing_columns(df) == ("START", "END")

@@ -1,54 +1,17 @@
-"""Canonical manifest schema and shared manifest I/O utilities.
-
-Defines the column contract that dataset adapters produce and generic
-processors consume.  Provides a single ``read_manifest`` entry-point that
-replaces the duplicated ``_read_manifest_csv`` helpers scattered across
-extract.py, clip_video.py, webdataset.py, and detect_person.py.
-"""
+"""Canonical manifest schema and shared manifest I/O utilities."""
 
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import pandas as pd
 
 # Common video extensions produced by yt-dlp and ffmpeg
-_VIDEO_EXTENSIONS: Sequence[str] = (".mp4", ".webm", ".mkv", ".avi", ".mov")
-
-# ---------------------------------------------------------------------------
-# Canonical column names
-# ---------------------------------------------------------------------------
-
-REQUIRED_COLUMNS = {"SAMPLE_ID", "VIDEO_ID"}
-
-TIMING_COLUMNS = {"START", "END"}
-
-SPLIT_COLUMNS = {"SPLIT"}
-
-LABEL_COLUMNS = {"TEXT", "GLOSS", "CLASS_ID"}
-
-SPATIAL_COLUMNS = {
-    "BBOX_X1", "BBOX_Y1", "BBOX_X2", "BBOX_Y2", "PERSON_DETECTED",
-}
-
-METADATA_COLUMNS = {
-    "SIGNER_ID", "LANGUAGE", "FPS", "VARIATION_ID", "SOURCE_URL",
-}
-
-# All known columns (union)
-ALL_KNOWN_COLUMNS = (
-    REQUIRED_COLUMNS
-    | TIMING_COLUMNS
-    | SPLIT_COLUMNS
-    | LABEL_COLUMNS
-    | SPATIAL_COLUMNS
-    | METADATA_COLUMNS
-)
+_VIDEO_EXTENSIONS = (".mp4", ".webm", ".mkv", ".avi", ".mov")
 
 # ---------------------------------------------------------------------------
 # Column alias mapping — old name → canonical name
 # ---------------------------------------------------------------------------
 
-_COLUMN_ALIASES: Dict[str, str] = {
+_COLUMN_ALIASES = {
     # How2Sign / YouTube-ASL legacy names
     "SENTENCE_NAME": "SAMPLE_ID",
     "VIDEO_NAME": "VIDEO_ID",
@@ -71,42 +34,37 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     ``df.rename()`` from producing duplicate column names.
     """
     rename_map = {}
-    # Track which canonical names have already been claimed by a rename
-    claimed_canonicals = set()
+    claimed = set(df.columns)
     for old_name, canonical in _COLUMN_ALIASES.items():
-        if old_name in df.columns and canonical not in df.columns:
-            if canonical not in claimed_canonicals:
-                rename_map[old_name] = canonical
-                claimed_canonicals.add(canonical)
+        if old_name in claimed and canonical not in claimed:
+            rename_map[old_name] = canonical
+            claimed.add(canonical)
     if rename_map:
         df = df.rename(columns=rename_map)
     return df
+
+
+def row_value(row: pd.Series, column: str) -> str:
+    """Return a manifest row value as stripped text, or empty when missing."""
+    value = row.get(column)
+    return "" if pd.isna(value) else str(value).strip()
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def read_manifest(
-    path: Union[str, Path],
-    normalize_columns: bool = True,
-) -> pd.DataFrame:
-    """Read a TSV manifest and optionally normalize column names.
+def read_manifest(path: str | Path) -> pd.DataFrame:
+    """Read a TSV manifest and normalize column names.
 
     Parameters
     ----------
     path : str or Path
         Path to the manifest TSV file.
-    normalize_columns : bool
-        If *True* (default), legacy column names (``VIDEO_NAME``,
-        ``SENTENCE_NAME``, ``START_REALIGNED``, etc.) are automatically
-        renamed to their canonical equivalents (``VIDEO_ID``,
-        ``SAMPLE_ID``, ``START``, etc.).
-
     Returns
     -------
     pd.DataFrame
-        The manifest data with (optionally) normalized column names.
+        The manifest data with normalized column names.
 
     Raises
     ------
@@ -117,77 +75,20 @@ def read_manifest(
     if not path.exists():
         raise FileNotFoundError(f"Manifest file not found: {path}")
 
-    df = pd.read_csv(path, delimiter="\t", on_bad_lines="warn")
-
-    if normalize_columns:
-        df = _normalize_columns(df)
-
-    return df
+    return _normalize_columns(
+        pd.read_csv(path, delimiter="\t", on_bad_lines="warn")
+    )
 
 
-def validate_manifest(df: pd.DataFrame) -> List[str]:
-    """Check a manifest DataFrame for schema issues.
-
-    Returns a list of human-readable warning/error strings.  An empty list
-    means no issues were found.
-
-    Checks performed:
-    - Required columns present (SAMPLE_ID, VIDEO_ID)
-    - Timing columns: if one of START/END is present, both must be
-    - No duplicate SAMPLE_ID values
-    """
-    issues: List[str] = []
-
-    # Required columns
-    missing_required = REQUIRED_COLUMNS - set(df.columns)
-    if missing_required:
-        issues.append(
-            f"Missing required columns: {sorted(missing_required)}"
-        )
-
-    # Timing column consistency
-    has_start = "START" in df.columns
-    has_end = "END" in df.columns
-    if has_start != has_end:
-        present = "START" if has_start else "END"
-        missing = "END" if has_start else "START"
-        issues.append(
-            f"Timing column '{present}' is present but '{missing}' is "
-            f"missing — both START and END are required for temporal "
-            f"segmentation."
-        )
-
-    # Duplicate SAMPLE_ID
-    if "SAMPLE_ID" in df.columns:
-        dup_mask = df["SAMPLE_ID"].duplicated(keep=False)
-        dup_count = dup_mask.sum()
-        if dup_count > 0:
-            dup_ids = sorted(df.loc[dup_mask, "SAMPLE_ID"].unique().tolist())
-            sample = dup_ids[:5]
-            issues.append(
-                f"{dup_count} duplicate SAMPLE_ID values found "
-                f"({len(dup_ids)} distinct IDs affected). "
-                f"First {len(sample)}: {sample}."
-            )
-
-    return issues
-
-
-def has_timing(df: pd.DataFrame) -> bool:
-    """Return True if the manifest has at least one row with both START and END non-null.
-
-    This is used by the runner to decide whether ``clip_video`` should be
-    activated (data-driven stage activation).  Requires a complete timing
-    interval (both columns populated) on the *same* row — a manifest where
-    START is set on one row and END on another does not qualify.
-    """
-    if "START" not in df.columns or "END" not in df.columns:
-        return False
-    return bool((df["START"].notna() & df["END"].notna()).any())
+def write_manifest(df: pd.DataFrame, path: str | Path) -> None:
+    """Write a canonical TSV manifest, creating its parent directory."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(path, sep="\t", index=False)
 
 
 def find_video_file(
-    base_dir: Union[str, Path],
+    base_dir: str | Path,
     stem: str,
 ) -> Path:
     """Find a video file by stem, trying common video extensions.
@@ -219,7 +120,7 @@ def find_video_file(
 
 def resolve_video_path(
     row: pd.Series,
-    base_dir: Union[str, Path],
+    base_dir: str | Path,
 ) -> Path:
     """Resolve the physical video file path for a manifest row.
 
@@ -243,24 +144,19 @@ def resolve_video_path(
     """
     base_dir = Path(base_dir)
 
-    rel_path = row.get("REL_PATH") if "REL_PATH" in row.index else None
-    if pd.notna(rel_path) and str(rel_path).strip():
-        return base_dir / str(rel_path)
+    rel_path = row_value(row, "REL_PATH")
+    if rel_path:
+        return base_dir / rel_path
 
-    video_name = row.get("VIDEO_NAME") if "VIDEO_NAME" in row.index else None
-    if pd.notna(video_name) and str(video_name).strip():
-        return find_video_file(base_dir, str(video_name))
+    video_name = row_value(row, "VIDEO_NAME")
+    if video_name:
+        return find_video_file(base_dir, video_name)
 
-    video_id = row.get("VIDEO_ID", "")
-    return find_video_file(base_dir, video_id)
+    return find_video_file(base_dir, row_value(row, "VIDEO_ID"))
 
 
-def get_timing_columns(df: pd.DataFrame) -> Tuple[str, str]:
-    """Return the (start_col, end_col) names present in the DataFrame.
-
-    After ``read_manifest`` with ``normalize_columns=True``, the canonical
-    names are ``START`` and ``END``.  This function also handles the legacy
-    names for callers that read manifests without normalization.
+def get_timing_columns(df: pd.DataFrame) -> tuple[str, str]:
+    """Return canonical timing columns when present.
 
     Returns
     -------
@@ -272,14 +168,9 @@ def get_timing_columns(df: pd.DataFrame) -> Tuple[str, str]:
     ValueError
         If no recognized timestamp columns are found.
     """
-    columns = set(df.columns)
-
-    if "START" in columns and "END" in columns:
+    if {"START", "END"}.issubset(df.columns):
         return "START", "END"
-    if "START_REALIGNED" in columns and "END_REALIGNED" in columns:
-        return "START_REALIGNED", "END_REALIGNED"
 
     raise ValueError(
-        "No recognized timestamp columns found in manifest. "
-        "Expected START/END or START_REALIGNED/END_REALIGNED."
+        "No canonical timestamp columns found in manifest. Expected START and END."
     )

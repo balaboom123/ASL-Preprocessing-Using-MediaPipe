@@ -1,7 +1,6 @@
 """SLoVo manifest building."""
 
 import logging
-import os
 from pathlib import Path
 from typing import List
 
@@ -10,6 +9,7 @@ import pandas as pd
 from .._ingestion.availability import apply_availability_policy_paths
 from .._ingestion.classmap import load_class_map
 from .._ingestion.media import get_video_duration, get_video_fps
+from ...utils.manifest import write_manifest
 from .source import (
     OPTIONAL_PASSTHROUGH,
     REQUIRED_COLUMNS,
@@ -94,8 +94,7 @@ def build(config, source: SlovoSourceConfig, log: logging.Logger) -> pd.DataFram
         policy=source.availability_policy,
     )
 
-    os.makedirs(os.path.dirname(manifest_path) or ".", exist_ok=True)
-    df.to_csv(manifest_path, sep="\t", index=False)
+    write_manifest(df, manifest_path)
     return df
 
 
@@ -115,23 +114,16 @@ def _apply_class_map(
             )
             return df
 
-        class_map = load_class_map(str(class_map_path))
-
-        if "GLOSS" in class_map.columns and "CLASS_ID" in class_map.columns:
-            gloss_to_id = class_map.set_index("GLOSS")["CLASS_ID"]
-            df = df.copy()
-            df["CLASS_ID"] = df["GLOSS"].map(gloss_to_id)
-            unmatched = df["CLASS_ID"].isna().sum()
-            if unmatched:
-                log.warning(
-                    "%d rows could not be matched to a CLASS_ID "
-                    "from the bundled class map.",
-                    unmatched,
-                )
-        else:
+        class_map = load_class_map(class_map_path)
+        gloss_to_id = class_map.set_index("GLOSS")["CLASS_ID"]
+        df = df.copy()
+        df["CLASS_ID"] = df["GLOSS"].map(gloss_to_id)
+        unmatched = df["CLASS_ID"].isna().sum()
+        if unmatched:
             log.warning(
-                "Bundled class map does not have GLOSS+CLASS_ID columns; "
-                "skipping CLASS_ID assignment."
+                "%d rows could not be matched to a CLASS_ID "
+                "from the bundled class map.",
+                unmatched,
             )
 
     elif source.class_map_mode == "derive":

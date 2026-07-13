@@ -3,9 +3,9 @@
 import logging
 import re
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from .._ingestion.availability import AvailabilityPolicy
 
@@ -21,8 +21,6 @@ SPLIT_ALIASES: Dict[str, List[str]] = {
     "validation": ["val"],
 }
 
-VALID_SPLITS = {"train", "val", "test", "all"}
-VALID_MODALITIES = set(MODALITY_SUFFIX)
 LABEL_OVERRIDE_FIELDS = {
     "train": "train_labels_file",
     "val": "val_labels_file",
@@ -33,10 +31,11 @@ LABEL_OVERRIDE_FIELDS = {
 class AUTSLSourceConfig(BaseModel):
     """Typed config for AUTSL adapter."""
 
+    model_config = ConfigDict(extra="forbid")
+
     release_dir: str = ""
-    variant: str = "challenge_2021"
-    split: str = "train"
-    modality: str = "rgb"
+    split: Literal["train", "val", "test", "all"] = "train"
+    modality: Literal["rgb", "depth"] = "rgb"
     availability_policy: AvailabilityPolicy = "fail_fast"
     allow_unlabeled: bool = False
     class_id_file: str = ""
@@ -59,20 +58,6 @@ def resolve_release_root(source: AUTSLSourceConfig, config) -> Path:
 
 def get_selected_splits(source: AUTSLSourceConfig) -> tuple[str, ...]:
     return ("train", "val", "test") if source.split == "all" else (source.split,)
-
-
-def validate_source_config(source: AUTSLSourceConfig) -> None:
-    """Validate user-facing split and modality settings."""
-    if source.split not in VALID_SPLITS:
-        raise ValueError(
-            f"Unsupported AUTSL split '{source.split}'. "
-            f"Expected one of {sorted(VALID_SPLITS)}."
-        )
-    if source.modality not in VALID_MODALITIES:
-        raise ValueError(
-            f"Unsupported AUTSL modality '{source.modality}'. "
-            f"Expected one of {sorted(VALID_MODALITIES)}."
-        )
 
 
 def parse_signer_id(sample_key: str) -> str:
@@ -159,8 +144,6 @@ def validate(
 ) -> dict:
     """Validate AUTSL release directory and required files."""
     release_root = resolve_release_root(source, config)
-    validate_source_config(source)
-
     if not release_root.exists():
         raise FileNotFoundError(
             f"AUTSL release directory not found: {release_root}\n"

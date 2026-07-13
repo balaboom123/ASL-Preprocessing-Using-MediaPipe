@@ -12,6 +12,7 @@ from .._cuda_utils import (
     format_effective_batch_size_message,
     is_cuda_device,
     is_cuda_oom_error,
+    parse_cuda_device_index,
     validate_cuda_device,
 )
 from ..base import Detection, PersonDetector
@@ -47,14 +48,12 @@ class YOLODetector(PersonDetector):
         validate_cuda_device(config.device)
 
         self.config = config
-        import torch
-
-        self._predict_device = torch.device(config.device)
-        if self._predict_device.type == "cuda":
-            predict_index = 0 if self._predict_device.index is None else self._predict_device.index
+        self._predict_device = str(config.device)
+        if is_cuda_device(self._predict_device):
+            predict_index = parse_cuda_device_index(self._predict_device) or 0
             self._expected_runtime_device = f"cuda:{predict_index}"
         else:
-            self._expected_runtime_device = str(self._predict_device)
+            self._expected_runtime_device = self._predict_device
         self.device_label = describe_device(config.device)
         self.use_fp16 = is_cuda_device(config.device)
         self._effective_batch_size = int(config.batch_size)

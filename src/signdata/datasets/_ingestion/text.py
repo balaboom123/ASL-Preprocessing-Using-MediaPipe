@@ -33,16 +33,12 @@ def normalize_text(
         text = ftfy.fix_text(text)
 
     if normalize_whitespace:
-        text = text.replace("\n", " ").replace("\r", " ")
-        text = re.sub(r"\s+", " ", text)
-        text = text.strip()
+        text = " ".join(text.split())
 
     if lowercase:
         text = text.lower()
 
     if strip_punctuation:
         text = re.sub(r"[^\w\s]", "", text)
-        if normalize_whitespace:
-            text = re.sub(r"\s+", " ", text).strip()
 
     return text

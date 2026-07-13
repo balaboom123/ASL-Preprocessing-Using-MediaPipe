@@ -2,7 +2,6 @@
 
 import gc
 import json
-import os
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -11,10 +10,9 @@ import numpy as np
 
 from .base import BaseProcessor
 from .pose import create_estimator
-from .sampler import create_sampler
 from ..registry import register_processor
-from ..utils.manifest import get_timing_columns, resolve_video_path
-from ..utils.video import resolve_effective_sample_fps
+from ..utils.manifest import get_timing_columns, resolve_video_path, row_value
+from ..utils.video import FPSSampler, resolve_effective_sample_fps
 
 
 BODY_POSE_INDICES = [0, 11, 12, 13, 14, 15, 16]
@@ -198,16 +196,6 @@ def _write_video(path: Path, frames: List[np.ndarray], fps: float, codec: str) -
     return True
 
 
-def _row_str(row, column: str) -> str:
-    if column not in row.index:
-        return ""
-    value = row.get(column)
-    if value is None:
-        return ""
-    value = str(value).strip()
-    return "" if value.lower() == "nan" else value
-
-
 @register_processor("video2parts")
 class Video2PartsProcessor(BaseProcessor):
     """Build face, hand, and upper-body pose streams from a video segment."""
@@ -227,7 +215,7 @@ class Video2PartsProcessor(BaseProcessor):
             return context
 
         estimator = create_estimator(cfg.pose, cfg.pose_config)
-        batch_size = getattr(cfg.pose_config, "batch_size", 16)
+        batch_size = cfg.pose_config.batch_size
         video_dir = str(context.videos_dir) if context.videos_dir else ""
         start_col, end_col = get_timing_columns(df)
 
@@ -245,16 +233,17 @@ class Video2PartsProcessor(BaseProcessor):
                     sample_dir / "meta.json",
                 ]
 
-                if not getattr(context, "force_all", False) and all(p.exists() for p in expected):
+                if not context.force_all and all(p.exists() for p in expected):
                     skipped += 1
                     continue
 
                 try:
-                    video_path = str(resolve_video_path(row, video_dir))
-                    if not os.path.exists(video_path):
+                    video_path = resolve_video_path(row, video_dir)
+                    if not video_path.exists():
                         self.logger.warning("Video not found: %s", video_path)
                         errors += 1
                         continue
+                    video_path = str(video_path)
 
                     cap = cv2.VideoCapture(video_path)
                     src_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
@@ -265,7 +254,7 @@ class Video2PartsProcessor(BaseProcessor):
 
                     start_sec = float(row[start_col])
                     end_sec = float(row[end_col])
-                    sampler = create_sampler(cfg.sample_rate, src_fps)
+                    sampler = FPSSampler(src_fps, cfg.sample_rate)
                     frames, frame_indices, frame_times = _read_sampled_frames_with_index(
                         video_path, start_sec, end_sec, sampler, src_fps,
                     )
@@ -277,7 +266,6 @@ class Video2PartsProcessor(BaseProcessor):
                     for i in range(0, len(frames), batch_size):
                         landmarks.extend(estimator.process_batch(
                             frames[i:i + batch_size],
-                            fallback_on_error=True,
                         ))
 
                     face_frames, left_frames, right_frames = [], [], []
@@ -395,7 +383,7 @@ class Video2PartsProcessor(BaseProcessor):
                         "pose_landmark_layout": f"mediapipe_{estimator.num_landmarks}",
                         "body_pose_layout": "signmusketeers_upper_body_14",
                         "license": source.get("license", ""),
-                        "source_url": _row_str(row, "URL"),
+                        "source_url": row_value(row, "URL"),
                     }
                     (sample_dir / "meta.json").write_text(
                         json.dumps(meta, ensure_ascii=True, sort_keys=True),

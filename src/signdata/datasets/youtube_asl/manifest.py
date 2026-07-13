@@ -2,9 +2,7 @@
 
 import csv
 import json
-import os
 import logging
-from glob import glob
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -22,41 +20,27 @@ def build(
     log: logging.Logger,
 ):
     """Build segmented manifest from transcript JSON files."""
-    transcript_dir = config.paths.transcripts
-    manifest_path = config.paths.manifest
-
-    json_files = glob(os.path.join(transcript_dir, "*.json"))
+    transcript_dir = Path(config.paths.transcripts)
+    manifest_path = Path(config.paths.manifest)
+    json_files = sorted(transcript_dir.glob("*.json"))
 
     if not json_files:
         log.warning("No transcript files found in %s", transcript_dir)
-        os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
-        empty_df = pd.DataFrame(
-            columns=["VIDEO_ID", "SAMPLE_ID", "START", "END", "TEXT"]
+    else:
+        log.info(
+            "Processing %d transcript files from %s",
+            len(json_files),
+            transcript_dir,
         )
-        empty_df.to_csv(manifest_path, sep="\t", index=False)
-        return manifest_path, empty_df, {"videos": 0, "segments": 0}
-
-    log.info(
-        "Processing %d transcript files from %s",
-        len(json_files),
-        transcript_dir,
-    )
-
-    if os.path.exists(manifest_path):
-        os.remove(manifest_path)
-
-    os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
 
     text_opts = source.text_processing.model_dump()
     processed_count = 0
-    total_segments = 0
-    first_write = True
+    all_segments = []
 
     for json_file in tqdm(json_files, desc="Building manifest"):
-        video_id = os.path.splitext(os.path.basename(json_file))[0]
+        video_id = json_file.stem
         try:
-            with open(json_file, "r", encoding="utf-8") as f:
-                transcript_data = json.load(f)
+            transcript_data = json.loads(json_file.read_text(encoding="utf-8"))
 
             if not transcript_data:
                 continue
@@ -71,31 +55,30 @@ def build(
             )
 
             if segments:
-                _save_segments(segments, manifest_path, append=not first_write)
-                first_write = False
+                all_segments.extend(segments)
                 processed_count += 1
-                total_segments += len(segments)
 
         except Exception as e:
             log.error("Error processing %s: %s", video_id, e)
 
-    if os.path.exists(manifest_path):
-        from ...utils.manifest import read_manifest
+    columns = ["VIDEO_ID", "SAMPLE_ID", "START", "END", "TEXT"]
+    df = pd.DataFrame(all_segments, columns=columns)
+    video_dir = config.paths.videos
+    if not df.empty and video_dir and Path(video_dir).is_dir():
+        df = apply_availability_policy(df, video_dir, source.availability_policy)
 
-        df = read_manifest(manifest_path, normalize_columns=True)
-
-        video_dir = config.paths.videos
-        if video_dir and Path(video_dir).is_dir():
-            df = apply_availability_policy(
-                df, video_dir, source.availability_policy,
-            )
-            df.to_csv(manifest_path, sep="\t", index=False)
-    else:
-        df = None
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(
+        manifest_path,
+        sep="\t",
+        index=False,
+        encoding="utf-8",
+        quoting=csv.QUOTE_ALL,
+    )
 
     return manifest_path, df, {
         "videos": processed_count,
-        "segments": total_segments,
+        "segments": len(all_segments),
     }
 
 
@@ -136,22 +119,3 @@ def _process_segments(
             idx += 1
 
     return processed
-
-
-def _save_segments(
-    segments: List[Dict],
-    csv_path: str,
-    append: bool = False,
-) -> None:
-    df = pd.DataFrame(segments)
-    mode = "a" if append else "w"
-    header = not append
-    df.to_csv(
-        csv_path,
-        sep="\t",
-        mode=mode,
-        header=header,
-        index=False,
-        encoding="utf-8",
-        quoting=csv.QUOTE_ALL,
-    )

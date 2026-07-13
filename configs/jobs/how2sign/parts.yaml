@@ -4,7 +4,6 @@ dataset:
   manifest: true
   source:
     manifest_csv: dataset/how2sign/text/how2sign_realigned_val.csv
-    split: val
     sign_language: ase
     spoken_language: en
     country: US
@@ -34,7 +33,6 @@ post_processing:
 
 output:
   enabled: true
-  type: webdataset
 
 run_name: signmusketeers_parts
 

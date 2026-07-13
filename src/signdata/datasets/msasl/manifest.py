@@ -1,7 +1,6 @@
 """MS-ASL manifest building."""
 
 import logging
-import os
 from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -9,6 +8,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from .._ingestion.availability import apply_availability_policy_paths
+from ...utils.manifest import write_manifest
 from .source import (
     MSASLSourceConfig,
     extract_video_id,
@@ -88,8 +88,7 @@ def build(config, source: MSASLSourceConfig, log: logging.Logger) -> pd.DataFram
     if video_dir and Path(video_dir).is_dir():
         df = apply_availability_policy_paths(df, video_dir, source.availability_policy)
 
-    os.makedirs(os.path.dirname(manifest_path) or ".", exist_ok=True)
-    df.to_csv(manifest_path, sep="\t", index=False)
+    write_manifest(df, manifest_path)
     return df
 
 

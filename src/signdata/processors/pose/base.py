@@ -6,64 +6,52 @@ from typing import Dict, List, Optional
 import numpy as np
 
 
-MEDIAPIPE_543_TO_83 = {
-    "description": (
-        "MediaPipe unrefined: 6 pose + 35 face + 21 left hand + 21 right hand"
-    ),
-    "source_keypoints": 543,
-    "target_keypoints": 83,
-    "indices": (
-        [11, 12, 13, 14, 23, 24]
-        + [
-            33, 37, 46, 47, 50, 66, 70, 72, 79, 85, 88, 94, 97,
-            114, 115, 126, 166, 184, 185, 192, 205, 211, 214,
-            296, 302, 309, 315, 318, 324, 327, 344, 356,
-            395, 419, 430,
-        ]
-        + list(range(501, 522))
-        + list(range(522, 543))
-    ),
-}
-
-MEDIAPIPE_553_TO_85 = {
-    "description": (
-        "MediaPipe refined: 6 pose + 37 face + 21 left hand + 21 right hand"
-    ),
-    "source_keypoints": 553,
-    "target_keypoints": 85,
-    "indices": (
-        [11, 12, 13, 14, 23, 24]
-        + [
-            33, 37, 46, 47, 50, 66, 70, 72, 79, 85, 88, 94, 97,
-            114, 115, 126, 166, 184, 185, 192, 205, 211, 214,
-            296, 302, 309, 315, 318, 324, 327, 344, 356,
-            395, 419, 430, 501, 506,
-        ]
-        + list(range(511, 532))
-        + list(range(532, 553))
-    ),
-}
-
-MMPOSE_133_TO_85 = {
-    "description": (
-        "COCO WholeBody 133 to 85 selected upper body, face, and hand keypoints"
-    ),
-    "source_keypoints": 133,
-    "target_keypoints": 85,
-    "indices": (
-        [5, 6, 7, 8, 11, 12]
-        + [23, 25, 27, 29, 31, 33, 35, 37, 39]
-        + [40, 41, 42, 43, 44, 45, 46, 47, 48, 49]
-        + [52, 54, 56, 58]
-        + [71, 73, 75, 77, 79, 81, 83, 84, 85, 86, 87, 88, 89, 90]
-        + list(range(91, 133))
-    ),
-}
-
 KEYPOINT_PRESETS: Dict[str, dict] = {
-    "mediapipe_553_to_85": MEDIAPIPE_553_TO_85,
-    "mediapipe_543_to_83": MEDIAPIPE_543_TO_83,
-    "mmpose_133_to_85": MMPOSE_133_TO_85,
+    "mediapipe_543_to_83": {
+        "description": (
+            "MediaPipe unrefined: 6 pose + 35 face + 21 left hand + 21 right hand"
+        ),
+        "indices": (
+            [11, 12, 13, 14, 23, 24]
+            + [
+                33, 37, 46, 47, 50, 66, 70, 72, 79, 85, 88, 94, 97,
+                114, 115, 126, 166, 184, 185, 192, 205, 211, 214,
+                296, 302, 309, 315, 318, 324, 327, 344, 356,
+                395, 419, 430,
+            ]
+            + list(range(501, 522))
+            + list(range(522, 543))
+        ),
+    },
+    "mediapipe_553_to_85": {
+        "description": (
+            "MediaPipe refined: 6 pose + 37 face + 21 left hand + 21 right hand"
+        ),
+        "indices": (
+            [11, 12, 13, 14, 23, 24]
+            + [
+                33, 37, 46, 47, 50, 66, 70, 72, 79, 85, 88, 94, 97,
+                114, 115, 126, 166, 184, 185, 192, 205, 211, 214,
+                296, 302, 309, 315, 318, 324, 327, 344, 356,
+                395, 419, 430, 501, 506,
+            ]
+            + list(range(511, 532))
+            + list(range(532, 553))
+        ),
+    },
+    "mmpose_133_to_85": {
+        "description": (
+            "COCO WholeBody 133 to 85 selected upper body, face, and hand keypoints"
+        ),
+        "indices": (
+            [5, 6, 7, 8, 11, 12]
+            + [23, 25, 27, 29, 31, 33, 35, 37, 39]
+            + [40, 41, 42, 43, 44, 45, 46, 47, 48, 49]
+            + [52, 54, 56, 58]
+            + [71, 73, 75, 77, 79, 81, 83, 84, 85, 86, 87, 88, 89, 90]
+            + list(range(91, 133))
+        ),
+    },
 }
 
 
@@ -97,9 +85,6 @@ def list_presets() -> Dict[str, str]:
 class LandmarkExtractor(ABC):
     """Abstract base class for landmark extraction."""
 
-    # Whether the extractor supports true batch inference (GPU batching)
-    supports_batch_inference: bool = False
-
     @abstractmethod
     def process_frame(
         self, frame: np.ndarray, bbox: Optional[np.ndarray] = None,
@@ -122,7 +107,6 @@ class LandmarkExtractor(ABC):
         self,
         frames: List[np.ndarray],
         bboxes: Optional[List[Optional[np.ndarray]]] = None,
-        fallback_on_error: bool = True,
     ) -> List[Optional[np.ndarray]]:
         """Process a batch of frames and extract landmarks.
 
@@ -135,8 +119,6 @@ class LandmarkExtractor(ABC):
                 detector. Each element is an array of shape (N, 4) or
                 None. Backends that perform their own detection may
                 ignore this.
-            fallback_on_error: If True, continue processing remaining frames
-                when one fails. If False, raise the exception.
 
         Returns:
             List of numpy arrays of landmarks (or None for failed frames).
@@ -148,15 +130,11 @@ class LandmarkExtractor(ABC):
                 landmarks = self.process_frame(frame, bbox=bbox)
                 results.append(landmarks)
             except Exception:
-                if fallback_on_error:
-                    results.append(None)
-                else:
-                    raise
+                results.append(None)
         return results
 
-    @abstractmethod
     def close(self):
-        """Release resources (models, GPU memory, etc.)."""
+        """Release resources when a backend owns any."""
         pass
 
     # Number of landmarks this extractor produces. Set in subclass __init__.
@@ -176,23 +154,7 @@ def create_estimator(pose_type: str, pose_config) -> LandmarkExtractor:
     if pose_type == "mediapipe":
         from .mediapipe import MediaPipeExtractor
 
-        from ...config.schema import MediaPipePoseConfig
-
-        cfg = (
-            pose_config
-            if isinstance(pose_config, MediaPipePoseConfig)
-            else MediaPipePoseConfig(**pose_config)
-        )
-
-        class _Cfg:
-            name = "mediapipe"
-            model_complexity = cfg.model_complexity
-            min_detection_confidence = cfg.min_detection_confidence
-            min_tracking_confidence = cfg.min_tracking_confidence
-            refine_face_landmarks = cfg.refine_face_landmarks
-            batch_size = cfg.batch_size
-
-        return MediaPipeExtractor(_Cfg())
+        return MediaPipeExtractor(pose_config)
 
     elif pose_type == "mmpose":
         from .mmpose import MMPoseExtractor
@@ -209,18 +171,7 @@ def create_estimator(pose_type: str, pose_config) -> LandmarkExtractor:
         except AttributeError:
             pass
 
-        class _Cfg:
-            name = "mmpose"
-            bbox_threshold = pose_config.bbox_threshold
-            keypoint_threshold = pose_config.keypoint_threshold
-            add_visible = True
-            batch_size = pose_config.batch_size
-
-        return MMPoseExtractor(
-            config=_Cfg(),
-            detector=None,
-            pose_estimator=pose_estimator,
-        )
+        return MMPoseExtractor(pose_estimator)
 
     else:
         raise ValueError(f"Unknown pose type: {pose_type!r}")

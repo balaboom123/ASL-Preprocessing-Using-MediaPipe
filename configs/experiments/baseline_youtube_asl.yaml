@@ -5,11 +5,11 @@ description: >
   (as in the original paper); MMPose uses a second GPU.
 
 jobs:
-  - config: datasets/youtube_asl/pose_mmpose.yaml
+  - config: jobs/youtube_asl/mediapipe.yaml
     overrides:
       processing.sample_rate: null
       post_processing.normalize.mask_empty_frames: true
 
-  - config: datasets/youtube_asl/pose_mmpose.yaml
+  - config: jobs/youtube_asl/mmpose.yaml
     overrides:
       processing.pose_config.device: "cuda:1"

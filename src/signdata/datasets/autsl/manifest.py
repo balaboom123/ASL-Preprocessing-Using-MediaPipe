@@ -1,7 +1,6 @@
 """AUTSL manifest building."""
 
 import logging
-import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -9,6 +8,7 @@ import pandas as pd
 
 from .._ingestion.availability import apply_availability_policy_paths
 from .._ingestion.media import get_video_duration, get_video_fps
+from ...utils.manifest import write_manifest
 from .source import (
     AUTSLSourceConfig,
     MODALITY_SUFFIX,
@@ -78,8 +78,7 @@ def build(config, source: AUTSLSourceConfig, log: logging.Logger) -> pd.DataFram
         rel_path_col="REL_PATH",
     )
 
-    os.makedirs(os.path.dirname(manifest_path) or ".", exist_ok=True)
-    df.to_csv(manifest_path, sep="\t", index=False)
+    write_manifest(df, manifest_path)
     return df
 
 

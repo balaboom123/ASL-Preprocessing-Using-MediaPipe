@@ -2,27 +2,18 @@
 
 import gc
 import logging
-import os
-from pathlib import Path
-from typing import List, Optional
 
 import cv2
 import numpy as np
 
 from .base import BaseProcessor
 from .detection import create_detector, single_person_check
-from .pose import create_estimator, LandmarkExtractor
-from .sampler import create_sampler, read_sampled_frames
+from .pose import create_estimator
 from ..registry import register_processor
 from ..utils.manifest import get_timing_columns, resolve_video_path
+from ..utils.video import FPSSampler, read_sampled_frames
 
 logger = logging.getLogger(__name__)
-
-
-def _iter_batches(frames: List[np.ndarray], batch_size: int):
-    """Yield frames in batches."""
-    for i in range(0, len(frames), batch_size):
-        yield frames[i:i + batch_size]
 
 
 def _extract_bboxes(detections, frames):
@@ -63,9 +54,7 @@ class Video2PoseProcessor(BaseProcessor):
         detector = create_detector(cfg.detection, cfg.detection_config)
         estimator = create_estimator(cfg.pose, cfg.pose_config)
 
-        batch_size = 16
-        if cfg.pose_config and hasattr(cfg.pose_config, "batch_size"):
-            batch_size = cfg.pose_config.batch_size
+        batch_size = cfg.pose_config.batch_size
 
         # Load manifest
         df = context.manifest_df
@@ -83,19 +72,20 @@ class Video2PoseProcessor(BaseProcessor):
         try:
             for _, row in df.iterrows():
                 sample_id = row["SAMPLE_ID"]
-                output_path = str(output_dir / f"{sample_id}.npy")
+                output_path = output_dir / f"{sample_id}.npy"
 
                 # Skip existing (unless force_all)
-                if not getattr(context, 'force_all', False) and os.path.exists(output_path):
+                if not context.force_all and output_path.exists():
                     skipped += 1
                     continue
 
                 try:
-                    video_path = str(resolve_video_path(row, video_dir))
-                    if not os.path.exists(video_path):
+                    video_path = resolve_video_path(row, video_dir)
+                    if not video_path.exists():
                         self.logger.warning("Video not found: %s", video_path)
                         errors += 1
                         continue
+                    video_path = str(video_path)
 
                     start_sec = float(row[start_col])
                     end_sec = float(row[end_col])
@@ -110,7 +100,7 @@ class Video2PoseProcessor(BaseProcessor):
                         continue
 
                     # Read sampled frames
-                    sampler = create_sampler(cfg.sample_rate, src_fps)
+                    sampler = FPSSampler(src_fps, cfg.sample_rate)
                     frames = read_sampled_frames(
                         video_path, start_sec, end_sec, sampler, src_fps,
                     )
@@ -133,14 +123,13 @@ class Video2PoseProcessor(BaseProcessor):
 
                     # Extract pose landmarks in batches
                     sequences = []
-                    num_landmarks = getattr(estimator, "num_landmarks", 133)
+                    num_landmarks = estimator.num_landmarks
 
                     for i in range(0, len(frames), batch_size):
                         batch_frames = frames[i:i + batch_size]
                         batch_bboxes = frame_bboxes[i:i + batch_size]
                         batch_results = estimator.process_batch(
                             batch_frames, bboxes=batch_bboxes,
-                            fallback_on_error=True,
                         )
                         for landmarks in batch_results:
                             if landmarks is None:

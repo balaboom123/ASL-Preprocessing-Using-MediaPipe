@@ -16,5 +16,5 @@ def build(config, source: How2SignSourceConfig):
             f"Provide a valid manifest path via paths.manifest in config."
         )
 
-    df = read_manifest(manifest_path, normalize_columns=True)
+    df = read_manifest(manifest_path)
     return manifest_path, df

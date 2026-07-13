@@ -59,8 +59,7 @@ and `paths.webdataset` from `paths.root` when they are omitted.
 ```text
 configs/
 ├── experiments/
-│   ├── baseline_youtube_asl.yaml
-│   └── privacy_aware_slt.yaml
+│   └── baseline_youtube_asl.yaml
 └── jobs/
     ├── autsl/
     │   ├── mediapipe.yaml
@@ -94,7 +93,7 @@ configs/
 |---|---|---|---|
 | `dataset` | `DatasetConfig` | none | Dataset adapter settings |
 | `processing` | `ProcessingConfig` | disabled | Main processor selection and backend configs |
-| `post_processing` | `PostProcessingConfig` | enabled | Post-processing recipes such as `normalize` |
+| `post_processing` | `PostProcessingConfig` | disabled | Optional landmark normalization |
 | `output` | `OutputConfig` | `webdataset` | Output writer settings |
 | `run_name` | `str` | `"default"` | Run namespace appended under `paths.output` and `paths.webdataset` |
 | `paths` | `PathsConfig` | empty strings | Artifact root paths, resolved relative to the project root |
@@ -138,11 +137,11 @@ If omitted, the loader derives these defaults from `paths.root`:
 | `video_ids_file` | `str` | `""` | Video ID list for YouTube-style datasets |
 | `annotations_dir` | `str` | `""` | Directory containing MS-ASL JSON annotation files |
 | `metadata_file` | `str` | `""` | Optional explicit BOBSL metadata JSON path when `subset2episode.json` is not stored in the default release location |
-| `metadata_json` | `str` | `""` | Canonical WLASL metadata JSON path (`annotation_json` is accepted as a compatibility alias) |
+| `metadata_json` | `str` | `""` | WLASL metadata JSON path |
 | `annotation_root` | `str` | `""` | Optional explicit BOBSL isolated-sign annotation path or directory |
 | `subtitles_root` | `str` | `""` | Optional explicit BOBSL subtitle directory |
 | `release_dir` | `str` | `""` | Local dataset release root for manually downloaded datasets such as AUTSL, LSA64, CSL, SLoVo, and RWTH-PHOENIX-Weather |
-| `variant` | `str` | adapter defaults | Dataset release variant such as `cut`, `raw`, or corpus-specific release names |
+| `variant` | `str` | `"cut"` | LSA64 release variant (`cut` or `raw`) |
 | `modality` | `str` | adapter defaults | Input modality selector for datasets with paired files such as AUTSL (`rgb` or `depth`) |
 | `languages` | `list[str]` | adapter defaults | Transcript language codes |
 | `availability_policy` | `str` | `"drop_unavailable"` | Availability handling policy for datasets that may have missing clips |
@@ -161,7 +160,7 @@ If omitted, the loader derives these defaults from `paths.root`:
 | `manifest_csv` | `str` | `""` | Existing manifest path for datasets such as How2Sign |
 | `manifest_tsv` | `str` | `""` | Official TSV manifest path for datasets such as OpenASL |
 | `bbox_json` | `str` | `""` | Optional bounding-box JSON path for datasets such as OpenASL |
-| `split` | `str` | `"all"` | Split label for datasets such as How2Sign, WLASL, MS-ASL, and AUTSL |
+| `split` | `str` | `"all"` | Split label for datasets such as WLASL, MS-ASL, and AUTSL |
 | `view` | `str` | adapter defaults | Dataset view selector for multi-view releases such as BOBSL (`subtitle_slt` or `isolated_signs`) |
 | `subtitle_alignment` | `str` | adapter defaults | Subtitle alignment choice for BOBSL (`manual` or `original`) |
 | `split_strategy` | `str` | adapter defaults | Split assignment policy for datasets such as LSA64 |
@@ -180,7 +179,7 @@ If omitted, the loader derives these defaults from `paths.root`:
 
 Relative file paths in `dataset.source`, such as `video_ids_file`,
 `manifest_csv`, `manifest_tsv`, `bbox_json`, `annotations_csv`,
-`annotations_dir`, `metadata_json`, `annotation_json`, `release_dir`,
+`annotations_dir`, `metadata_json`, `release_dir`,
 `class_map_file`, `class_id_file`, `train_labels_file`, `val_labels_file`,
 `test_labels_file`, `corpus_file`, `split_spec_file`, `metadata_file`,
 `annotation_root`, and `subtitles_root`, are resolved from the project root.
@@ -229,17 +228,6 @@ processing:
   sample_rate: 24.0   # downsample to 24 FPS
 ```
 
-Legacy sampling keys are deprecated:
-
-- `processing.frame_skip`
-- `processing.target_fps`
-
-They are still accepted for migration, but new configs should use only
-`processing.sample_rate`. Legacy `video2crop` configs that combined both old
-keys cannot be reproduced exactly with a single scalar because the old pipeline
-used `target_fps` for clip cadence and `frame_skip` as a separate detection-only
-stride.
-
 If the source video FPS is lower than an absolute target, the pipeline keeps the
 source FPS. It does not upsample or invent frames.
 
@@ -287,8 +275,6 @@ source FPS. It does not upsample or invent frames.
 | `pose_model_config` | `str` | none | Pose model config path or `mmpose::...` package resource |
 | `pose_model_checkpoint` | `str` | none | Pose checkpoint path or URL |
 | `device` | `str` | `"cuda:0"` | Inference device |
-| `bbox_threshold` | `float` | `0.5` | Person-box threshold |
-| `keypoint_threshold` | `float` | `0.3` | Keypoint threshold |
 | `batch_size` | `int` | `16` | Frames per inference batch |
 
 ## `processing.video_config`
@@ -307,16 +293,13 @@ source FPS. It does not upsample or invent frames.
 | `bbox_scale` | `float` | `1.2` | Scale factor applied to face/hand landmark boxes |
 | `codec` | `str` | `"mp4v"` | OpenCV fourcc used for part-stream MP4 files |
 | `missing_value` | `float` | `-1.0` | Fill value for missing body pose and bboxes |
-| `store_crops` | `"mp4"` | `"mp4"` | Current crop storage mode |
-| `store_features` | `bool` | `false` | Reserved for a later DINO feature-cache stage; `true` is rejected for now |
 
 ## `post_processing`
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | `bool` | `true` | Run post-processing recipes |
-| `recipes` | `list[str]` | `[]` | Ordered recipe names, e.g. `["normalize"]` |
-| `normalize` | `NormalizeConfig?` | `null` | Config block for the built-in `normalize` recipe |
+| `enabled` | `bool` | `false` | Run landmark normalization |
+| `normalize` | `NormalizeConfig?` | `null` | Normalization settings |
 
 ## `post_processing.normalize`
 
@@ -337,7 +320,6 @@ source FPS. It does not upsample or invent frames.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | `bool` | `true` | Run the output stage |
-| `type` | `"webdataset"` | `"webdataset"` | Output writer type |
 | `config` | `dict` | `{}` | Writer-specific settings |
 
 ## `output.config`

@@ -1,22 +1,10 @@
-"""Pipeline-level availability utilities.
-
-Dataset-ingestion helpers (apply_availability_policy, get_existing_video_ids,
-write_acquire_report, apply_availability_policy_paths) have moved to
-``signdata.datasets._ingestion.availability``.
-
-This module retains:
-  - ``AvailabilityPolicy`` — shared type used by both layers
-  - ``filter_available``   — called by the pipeline runner after manifest load
-"""
+"""Pipeline-level availability filtering."""
 
 import logging
-from typing import Literal
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
-
-AvailabilityPolicy = Literal["fail_fast", "drop_unavailable", "mark_unavailable"]
 
 
 def filter_available(df: pd.DataFrame) -> pd.DataFrame:

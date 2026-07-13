@@ -1,15 +1,14 @@
 """Four-stage pipeline runner."""
 
 import logging
-from typing import Optional
 
 from ..config.schema import Config
 from ..registry import (
     DATASET_REGISTRY,
     PROCESSOR_REGISTRY,
-    POST_PROCESSOR_REGISTRY,
-    OUTPUT_REGISTRY,
 )
+from ..output.webdataset import WebDatasetOutput
+from ..post_processors.normalize import NormalizePostProcessor
 from .context import PipelineContext
 
 logger = logging.getLogger(__name__)
@@ -54,12 +53,10 @@ class PipelineRunner:
         if self.config.dataset.download:
             logger.info("Running: dataset.download")
             context = self.dataset.download(self.config, context)
-            context.completed_stages.append("dataset.download")
 
         if self.config.dataset.manifest:
             logger.info("Running: dataset.manifest")
             context = self.dataset.build_manifest(self.config, context)
-            context.completed_stages.append("dataset.manifest")
         else:
             # Load existing manifest so downstream stages can iterate it
             if self.config.paths.manifest:
@@ -82,33 +79,16 @@ class PipelineRunner:
                 )
             processor = PROCESSOR_REGISTRY[processor_name](self.config)
             context = processor.run(context)
-            context.completed_stages.append(f"processing.{processor_name}")
 
         # Stage 3: post_processing
         if self.config.post_processing.enabled:
-            for recipe_name in self.config.post_processing.recipes:
-                logger.info("Running: post_processing.%s", recipe_name)
-                if recipe_name not in POST_PROCESSOR_REGISTRY:
-                    raise ValueError(
-                        f"Unknown post-processor '{recipe_name}'. "
-                        f"Available: {list(POST_PROCESSOR_REGISTRY.keys())}"
-                    )
-                pp = POST_PROCESSOR_REGISTRY[recipe_name](self.config)
-                context = pp.run(context)
-                context.completed_stages.append(f"post_processing.{recipe_name}")
+            logger.info("Running: post_processing.normalize")
+            context = NormalizePostProcessor(self.config).run(context)
 
         # Stage 4: output
         if self.config.output.enabled:
-            output_type = self.config.output.type
-            logger.info("Running: output (%s)", output_type)
-            if output_type not in OUTPUT_REGISTRY:
-                raise ValueError(
-                    f"Unknown output type '{output_type}'. "
-                    f"Available: {list(OUTPUT_REGISTRY.keys())}"
-                )
-            output = OUTPUT_REGISTRY[output_type](self.config)
-            context = output.run(context)
-            context.completed_stages.append(f"output.{output_type}")
+            logger.info("Running: output.webdataset")
+            context = WebDatasetOutput(self.config).run(context)
 
         logger.info("Pipeline complete.")
         return context

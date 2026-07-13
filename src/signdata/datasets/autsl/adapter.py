@@ -32,13 +32,11 @@ class AUTSLDataset(DatasetAdapter):
     @classmethod
     def validate_config(cls, config) -> None:
         source = _source.get_source_config(config)
-        if not (source.release_dir or getattr(config.paths, "videos", "")):
+        if not (source.release_dir or config.paths.videos):
             raise ValueError(
                 "autsl requires dataset.source.release_dir or paths.videos "
                 "pointing to the local AUTSL release directory."
             )
-        _source.validate_source_config(source)
-
     def get_source_config(self, config) -> _source.AUTSLSourceConfig:
         return _source.get_source_config(config)
 

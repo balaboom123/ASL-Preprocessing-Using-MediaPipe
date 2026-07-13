@@ -55,9 +55,11 @@ source venv/bin/activate  # Linux/macOS — use venv\Scripts\activate on Windows
 pip install -r requirements.txt
 ```
 
-### Optional: GPU-based Extractors (MMPose, MMDet, YOLO)
+### Optional: GPU-based Extractors (MMPose, MMDet)
 
-MediaPipe works on CPU out of the box. MMPose, MMDet, and YOLO require a CUDA-capable GPU and additional dependencies -- see the [Installation Guide](docs/installation.md) for full setup instructions.
+MediaPipe and the shipped YOLO jobs work on CPU after the base install. MMPose
+and MMDet require a CUDA-capable GPU and additional dependencies -- see the
+[Installation Guide](docs/installation.md) for setup instructions.
 
 ---
 

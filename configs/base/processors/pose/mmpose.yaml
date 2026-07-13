@@ -1,6 +1,4 @@
 pose_model_config: mmpose::wholebody_2d_keypoint/rtmpose/cocktail14/rtmw-l_8xb320-270e_cocktail14-384x288.py
 pose_model_checkpoint: https://download.openmmlab.com/mmpose/v1/projects/rtmw/rtmw-dw-x-l_simcc-cocktail14_270e-384x288-20231122.pth
 device: "cuda:0"
-bbox_threshold: 0.5
-keypoint_threshold: 0.3
 batch_size: 16

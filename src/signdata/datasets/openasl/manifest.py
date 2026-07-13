@@ -2,13 +2,13 @@
 
 import json
 import logging
-import os
 from pathlib import Path
 
 import pandas as pd
 
 from .._ingestion.availability import apply_availability_policy
 from .._ingestion.text import normalize_text
+from ...utils.manifest import write_manifest
 from .source import OpenASLSourceConfig
 
 
@@ -72,16 +72,14 @@ def build(config, source: OpenASLSourceConfig, log: logging.Logger) -> pd.DataFr
     if video_dir and Path(video_dir).is_dir():
         df = apply_availability_policy(df, video_dir, source.availability_policy)
 
-    os.makedirs(os.path.dirname(manifest_path) or ".", exist_ok=True)
-    df.to_csv(manifest_path, sep="\t", index=False)
+    write_manifest(df, manifest_path)
     return df
 
 
 def _merge_bboxes(df: pd.DataFrame, bbox_path: str) -> pd.DataFrame:
     df = df.copy()
 
-    with open(bbox_path, "r", encoding="utf-8") as f:
-        bboxes = json.load(f)
+    bboxes = json.loads(Path(bbox_path).read_text(encoding="utf-8"))
 
     x1, y1, x2, y2, detected = [], [], [], [], []
 

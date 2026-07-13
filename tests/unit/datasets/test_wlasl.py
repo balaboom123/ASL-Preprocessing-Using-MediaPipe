@@ -58,17 +58,6 @@ class TestWLASLValidateConfig:
         )
         WLASLDataset.validate_config(cfg)
 
-    def test_annotation_json_alias_passes(self, tmp_path):
-        metadata_path = tmp_path / "WLASL_v0.3.json"
-        _write_metadata(metadata_path, [])
-        cfg = Config(
-            dataset={
-                "name": "wlasl",
-                "source": {"annotation_json": str(metadata_path)},
-            },
-        )
-        WLASLDataset.validate_config(cfg)
-
     def test_missing_metadata_json_raises(self):
         cfg = Config(dataset={"name": "wlasl"})
         with pytest.raises(ValueError, match="metadata_json"):
@@ -93,19 +82,6 @@ class TestWLASLSourceConfig:
         assert source.subset == 0
         assert source.download_mode == "validate"
         assert source.availability_policy == "drop_unavailable"
-
-    def test_annotation_json_alias_maps_to_metadata_json(self, tmp_path):
-        metadata_path = tmp_path / "WLASL_v0.3.json"
-        _write_metadata(metadata_path, [])
-        cfg = Config(
-            dataset={
-                "name": "wlasl",
-                "source": {"annotation_json": str(metadata_path)},
-            },
-        )
-
-        source = WLASLDataset().get_source_config(cfg)
-        assert source.metadata_json == str(metadata_path)
 
     def test_custom_options(self, tmp_path):
         metadata_path = tmp_path / "WLASL_v0.3.json"
@@ -188,7 +164,7 @@ class TestWLASLDownload:
 
         adapter = WLASLDataset()
         context = PipelineContext(config=cfg, dataset=adapter)
-        with pytest.raises(ValueError, match="Unknown download_mode"):
+        with pytest.raises(ValueError, match="download_mode"):
             adapter.download(cfg, context)
 
     def test_download_missing_uses_instance_urls(self, tmp_path, monkeypatch):

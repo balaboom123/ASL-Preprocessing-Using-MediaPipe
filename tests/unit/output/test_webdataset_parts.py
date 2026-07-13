@@ -3,12 +3,27 @@
 import tarfile
 
 import pandas as pd
-import webdataset as wds
+import pytest
 
 from signdata.config.schema import Config
 from signdata.datasets.how2sign import How2SignDataset
 from signdata.output.webdataset import WebDatasetOutput
 from signdata.pipeline.context import PipelineContext
+
+
+def test_webdataset_rejects_unsupported_processor(tmp_path):
+    cfg = Config(
+        dataset={"name": "how2sign"},
+        processing={"enabled": False, "processor": "video2compression"},
+    )
+    ctx = PipelineContext(
+        config=cfg,
+        dataset=How2SignDataset(),
+        webdataset_dir=tmp_path / "wds",
+    )
+
+    with pytest.raises(ValueError, match="video2compression"):
+        WebDatasetOutput(cfg).run(ctx)
 
 
 def test_webdataset_packages_video2parts_bundle(tmp_path):
@@ -28,7 +43,7 @@ def test_webdataset_packages_video2parts_bundle(tmp_path):
             "pose": "mediapipe",
             "pose_config": {"model_complexity": 1},
         },
-        output={"enabled": True, "type": "webdataset"},
+        output={"enabled": True},
         post_processing={"enabled": False},
     )
     ctx = PipelineContext(
@@ -50,7 +65,8 @@ def test_webdataset_packages_video2parts_bundle(tmp_path):
     shard_path = tmp_path / "wds" / "run" / "shard-000000.tar"
 
     with tarfile.open(shard_path) as tar:
-        names = set(tar.getnames())
+        members = tar.getmembers()
+        names = {member.name for member in members}
 
     assert names == {
         f"{sample_id}.face_mp4",
@@ -60,16 +76,38 @@ def test_webdataset_packages_video2parts_bundle(tmp_path):
         f"{sample_id}.json",
         f"{sample_id}.txt",
     }
-    rows = list(wds.WebDataset(str(shard_path), shardshuffle=False))
-    assert len(rows) == 1
-    assert set(rows[0]) >= {
-        "__key__",
-        "face_mp4",
-        "left_hand_mp4",
-        "right_hand_mp4",
-        "pose_npz",
-        "json",
-        "txt",
-    }
-    assert rows[0]["__key__"] == sample_id
+    assert {member.mtime for member in members} == {0}
     assert ctx.stats["output.webdataset"]["written"] == 1
+
+
+def test_webdataset_prefers_normalized_pose_bytes(tmp_path):
+    sample_id = "sample_001"
+    output_dir = tmp_path / "output" / "run"
+    (output_dir / "raw").mkdir(parents=True)
+    (output_dir / "normalized").mkdir()
+    (output_dir / "raw" / f"{sample_id}.npy").write_bytes(b"raw")
+    (output_dir / "normalized" / f"{sample_id}.npy").write_bytes(b"normalized")
+
+    cfg = Config(
+        dataset={"name": "how2sign"},
+        processing={"enabled": False, "processor": "video2pose"},
+        post_processing={"enabled": False},
+        output={"enabled": True},
+    )
+    ctx = PipelineContext(
+        config=cfg,
+        dataset=How2SignDataset(),
+        manifest_df=pd.DataFrame({
+            "VIDEO_ID": ["video_001"],
+            "SAMPLE_ID": [sample_id],
+            "START": [0.0],
+            "END": [1.0],
+        }),
+        output_dir=output_dir,
+        webdataset_dir=tmp_path / "wds" / "run",
+    )
+
+    WebDatasetOutput(cfg).run(ctx)
+
+    with tarfile.open(ctx.webdataset_dir / "shard-000000.tar") as tar:
+        assert tar.extractfile(f"{sample_id}.npy").read() == b"normalized"

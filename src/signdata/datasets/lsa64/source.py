@@ -197,12 +197,7 @@ def load_lsa64_class_map(
     for path in candidates:
         if path.exists():
             log.info("Loading LSA64 class map from %s", path)
-            return load_class_map(
-                path,
-                id_column="CLASS_ID",
-                gloss_column="GLOSS",
-                extra_columns=["HANDEDNESS"],
-            )
+            return load_class_map(path)
 
     if source.allow_missing_class_map:
         log.warning(

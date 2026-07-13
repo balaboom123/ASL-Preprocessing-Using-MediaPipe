@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -34,8 +34,6 @@ class PipelineContext:
     # Flags
     force_all: bool = False
 
-    # Tracking
-    completed_stages: List[str] = field(default_factory=list)
     stats: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     def resolve_paths(self) -> None:
@@ -51,4 +49,4 @@ class PipelineContext:
         from ..utils.manifest import read_manifest
 
         self.manifest_path = Path(manifest_path)
-        self.manifest_df = read_manifest(manifest_path, normalize_columns=True)
+        self.manifest_df = read_manifest(manifest_path)

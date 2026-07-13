@@ -129,7 +129,6 @@ class TestSlovoDownload:
 
         assert context.stats["dataset.download"] == {
             "validated": True,
-            "variant": "trimmed",
             "rows_found": 2,
         }
 

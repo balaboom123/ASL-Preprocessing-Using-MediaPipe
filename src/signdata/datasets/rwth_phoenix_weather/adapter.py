@@ -17,15 +17,13 @@ class RWTHPhoenixWeatherDataset(DatasetAdapter):
     @classmethod
     def validate_config(cls, config) -> None:
         source = _source.get_source_config(config)
-        release_dir = source.release_dir or getattr(config.paths, "videos", "")
+        release_dir = source.release_dir or config.paths.videos
         if not release_dir:
             raise ValueError(
                 "rwth_phoenix_weather requires either "
                 "dataset.source.release_dir or paths.videos pointing to the "
                 "unpacked PHOENIX release directory."
             )
-        _source.validate_source_config(source)
-
     def get_source_config(self, config) -> _source.RWTHPhoenixWeatherSourceConfig:
         return _source.get_source_config(config)
 

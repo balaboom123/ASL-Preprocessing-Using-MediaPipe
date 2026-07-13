@@ -1,16 +1,20 @@
 """LSA64 manifest building."""
 
 import logging
-import os
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 
 from .._ingestion.availability import apply_availability_policy_paths
-from .._ingestion.classmap import join_class_map
 from .._ingestion.media import get_video_duration, get_video_fps
-from .source import DEFAULT_FPS, LSA64SourceConfig, load_lsa64_class_map, resolve_video_dir
+from ...utils.manifest import write_manifest
+from .source import (
+    DEFAULT_FPS,
+    LSA64SourceConfig,
+    load_lsa64_class_map,
+    resolve_video_dir,
+)
 
 
 def build(
@@ -89,15 +93,17 @@ def build(
 
     class_map = load_lsa64_class_map(source, log)
     if class_map is not None:
-        df = join_class_map(
-            df,
-            class_map,
-            on="CLASS_ID",
-            gloss_column="GLOSS",
-            extra_columns=["HANDEDNESS"] if "HANDEDNESS" in class_map.columns else None,
+        lookup = class_map.set_index("CLASS_ID")
+        df["GLOSS"] = df["CLASS_ID"].map(lookup["GLOSS"])
+        df["TEXT"] = df["GLOSS"]
+        df["HANDEDNESS"] = (
+            df["CLASS_ID"].map(lookup["HANDEDNESS"])
+            if "HANDEDNESS" in lookup.columns
+            else None
         )
-        if "TEXT" not in df.columns:
-            df["TEXT"] = df["GLOSS"]
+        unmapped = int(df["GLOSS"].isna().sum())
+        if unmapped:
+            log.warning("%d CLASS_ID values were not found in the class map.", unmapped)
     else:
         df["GLOSS"] = None
         df["TEXT"] = None
@@ -131,8 +137,7 @@ def build(
     df = df[ordered + extra]
 
     manifest_path = config.paths.manifest
-    os.makedirs(os.path.dirname(manifest_path) or ".", exist_ok=True)
-    df.to_csv(manifest_path, sep="\t", index=False)
+    write_manifest(df, manifest_path)
     return df
 
 

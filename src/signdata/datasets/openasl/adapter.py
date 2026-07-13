@@ -46,10 +46,3 @@ class OpenASLDataset(DatasetAdapter):
             len(df), df["VIDEO_ID"].nunique(), config.paths.manifest,
         )
         return context
-
-    def _download_videos(self, video_ids, video_dir, source):
-        return _source._download_videos(video_ids, video_dir, source, self.logger)
-
-    @staticmethod
-    def _merge_bboxes(df, bbox_path):
-        return _manifest._merge_bboxes(df, bbox_path)

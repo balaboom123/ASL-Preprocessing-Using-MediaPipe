@@ -1,13 +1,13 @@
 """RWTH-PHOENIX-Weather manifest building."""
 
 import logging
-import os
 from pathlib import Path
 from typing import List, Optional
 
 import pandas as pd
 
 from .._ingestion.availability import apply_availability_policy_paths
+from ...utils.manifest import write_manifest
 from .source import (
     ALL_SPLITS,
     RWTHPhoenixWeatherSourceConfig,
@@ -27,7 +27,7 @@ def build(
 ) -> pd.DataFrame:
     """Build a canonical TSV manifest from PHOENIX corpus CSV files."""
     release_dir = Path(source.release_dir)
-    video_dir = Path(config.paths.videos) if getattr(config.paths, "videos", "") else release_dir
+    video_dir = Path(config.paths.videos) if config.paths.videos else release_dir
     manifest_path = config.paths.manifest
 
     if not release_dir.exists():
@@ -70,8 +70,7 @@ def build(
         rel_path_col="REL_PATH",
     )
 
-    os.makedirs(os.path.dirname(manifest_path) or ".", exist_ok=True)
-    df.to_csv(manifest_path, sep="\t", index=False)
+    write_manifest(df, manifest_path)
     return df
 
 

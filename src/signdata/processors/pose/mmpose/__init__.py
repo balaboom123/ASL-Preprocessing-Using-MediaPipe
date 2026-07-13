@@ -1,5 +1,5 @@
 """MMPose pose backend."""
 
-from .backend import MMPoseExtractor, MultiPersonDetected
+from .backend import MMPoseExtractor
 
-__all__ = ["MMPoseExtractor", "MultiPersonDetected"]
+__all__ = ["MMPoseExtractor"]

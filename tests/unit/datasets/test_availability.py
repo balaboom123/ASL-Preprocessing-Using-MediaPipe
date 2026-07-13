@@ -188,8 +188,16 @@ class TestWriteAcquireReport:
     def test_writes_missing_csv_with_data(self, tmp_path):
         report_dir = str(tmp_path / "reports")
         missing = [
-            {"VIDEO_ID": "v1", "REASON": "unavailable"},
-            {"VIDEO_ID": "v2", "REASON": "blocked"},
+            {
+                "VIDEO_ID": "v1",
+                "SOURCE_URL": "https://example.test/v1",
+                "REASON": "unavailable",
+            },
+            {
+                "VIDEO_ID": "v2",
+                "SOURCE_URL": "https://example.test/v2",
+                "REASON": "blocked",
+            },
         ]
         write_acquire_report(report_dir, {"total": 5}, missing)
 
@@ -198,6 +206,7 @@ class TestWriteAcquireReport:
         df = pd.read_csv(csv_path)
         assert len(df) == 2
         assert "VIDEO_ID" in df.columns
+        assert "SOURCE_URL" in df.columns
         assert "REASON" in df.columns
 
     def test_writes_empty_csv_with_headers(self, tmp_path):

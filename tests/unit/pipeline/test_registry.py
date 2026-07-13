@@ -2,12 +2,8 @@
 
 from signdata.registry import (
     DATASET_REGISTRY,
-    OUTPUT_REGISTRY,
-    POST_PROCESSOR_REGISTRY,
     PROCESSOR_REGISTRY,
     register_dataset,
-    register_output,
-    register_post_processor,
     register_processor,
 )
 
@@ -37,30 +33,6 @@ class TestRegisterProcessor:
         del PROCESSOR_REGISTRY["_test_proc"]
 
 
-class TestRegisterPostProcessor:
-    def test_adds_class_to_registry(self):
-        @register_post_processor("_test_pp")
-        class _TestPP:
-            pass
-
-        assert "_test_pp" in POST_PROCESSOR_REGISTRY
-        assert POST_PROCESSOR_REGISTRY["_test_pp"] is _TestPP
-
-        del POST_PROCESSOR_REGISTRY["_test_pp"]
-
-
-class TestRegisterOutput:
-    def test_adds_class_to_registry(self):
-        @register_output("_test_out")
-        class _TestOut:
-            pass
-
-        assert "_test_out" in OUTPUT_REGISTRY
-        assert OUTPUT_REGISTRY["_test_out"] is _TestOut
-
-        del OUTPUT_REGISTRY["_test_out"]
-
-
 class TestRealRegistrations:
     """Verify all real registrations exist after importing modules."""
 
@@ -83,15 +55,3 @@ class TestRealRegistrations:
         for name in expected:
             assert name in PROCESSOR_REGISTRY, f"Processor '{name}' not registered"
         assert len(PROCESSOR_REGISTRY) >= 2
-
-    def test_post_processors_registered(self):
-        import signdata.post_processors  # noqa: F401
-
-        assert "normalize" in POST_PROCESSOR_REGISTRY
-        assert len(POST_PROCESSOR_REGISTRY) >= 1
-
-    def test_outputs_registered(self):
-        import signdata.output  # noqa: F401
-
-        assert "webdataset" in OUTPUT_REGISTRY
-        assert len(OUTPUT_REGISTRY) >= 1

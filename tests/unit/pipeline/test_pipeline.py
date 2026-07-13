@@ -37,7 +37,6 @@ class TestPipelineContext:
         assert ctx.output_dir is None
         assert ctx.webdataset_dir is None
         assert ctx.videos_dir is None
-        assert ctx.completed_stages == []
         assert ctx.stats == {}
 
     def test_resolve_paths(self, tmp_path):
@@ -163,12 +162,10 @@ class TestPipelineRunnerOrchestration:
 
         cfg = self._make_config()
         runner = PipelineRunner(cfg)
-        context = runner.run()
+        runner.run()
 
         mock_download.assert_called_once()
         mock_manifest.assert_called_once()
-        assert "dataset.download" in context.completed_stages
-        assert "dataset.manifest" in context.completed_stages
 
     @patch.object(YouTubeASLDataset, "build_manifest")
     @patch.object(YouTubeASLDataset, "download")
@@ -179,10 +176,9 @@ class TestPipelineRunnerOrchestration:
             dataset={"name": "youtube_asl", "download": False, "manifest": True},
         )
         runner = PipelineRunner(cfg)
-        context = runner.run()
+        runner.run()
 
         mock_download.assert_not_called()
-        assert "dataset.download" not in context.completed_stages
 
     @patch.object(YouTubeASLDataset, "build_manifest")
     @patch.object(YouTubeASLDataset, "download")
@@ -193,10 +189,9 @@ class TestPipelineRunnerOrchestration:
             dataset={"name": "youtube_asl", "download": True, "manifest": False},
         )
         runner = PipelineRunner(cfg)
-        context = runner.run()
+        runner.run()
 
         mock_manifest.assert_not_called()
-        assert "dataset.manifest" not in context.completed_stages
 
     def test_reused_lsa64_manifest_rejects_variant_mismatch(self, tmp_path, monkeypatch):
         release_root = tmp_path / "lsa64"
@@ -304,10 +299,9 @@ class TestPipelineRunnerOrchestration:
                 output={"enabled": False},
             )
             runner = PipelineRunner(cfg)
-            context = runner.run()
+            runner.run()
 
         mock_processor.assert_called_once()
-        assert "processing.video2pose" in context.completed_stages
 
     @patch.object(YouTubeASLDataset, "download")
     def test_unknown_processor_raises(self, mock_download):
@@ -331,48 +325,38 @@ class TestPipelineRunnerOrchestration:
             with pytest.raises(ValueError, match="Unknown processor"):
                 runner.run()
 
+    @patch("signdata.pipeline.runner.NormalizePostProcessor")
     @patch.object(YouTubeASLDataset, "download")
-    def test_post_processing_stage(self, mock_download):
+    def test_post_processing_stage(self, mock_download, mock_pp):
         mock_download.side_effect = lambda cfg, ctx: ctx
 
-        mock_pp = MagicMock()
         mock_pp.return_value.run.side_effect = lambda ctx: ctx
 
-        with patch.dict(
-            "signdata.pipeline.runner.POST_PROCESSOR_REGISTRY",
-            {"normalize": mock_pp},
-        ):
-            cfg = Config(
-                dataset={"name": "youtube_asl", "download": True, "manifest": False},
-                processing={"enabled": False},
-                post_processing={"enabled": True, "recipes": ["normalize"]},
-                output={"enabled": False},
-            )
-            runner = PipelineRunner(cfg)
-            context = runner.run()
+        cfg = Config(
+            dataset={"name": "youtube_asl", "download": True, "manifest": False},
+            processing={"enabled": False},
+            post_processing={"enabled": True, "normalize": {}},
+            output={"enabled": False},
+        )
+        runner = PipelineRunner(cfg)
+        runner.run()
 
         mock_pp.assert_called_once()
-        assert "post_processing.normalize" in context.completed_stages
 
+    @patch("signdata.pipeline.runner.WebDatasetOutput")
     @patch.object(YouTubeASLDataset, "download")
-    def test_output_stage(self, mock_download):
+    def test_output_stage(self, mock_download, mock_output):
         mock_download.side_effect = lambda cfg, ctx: ctx
 
-        mock_output = MagicMock()
         mock_output.return_value.run.side_effect = lambda ctx: ctx
 
-        with patch.dict(
-            "signdata.pipeline.runner.OUTPUT_REGISTRY",
-            {"webdataset": mock_output},
-        ):
-            cfg = Config(
-                dataset={"name": "youtube_asl", "download": True, "manifest": False},
-                processing={"enabled": False},
-                post_processing={"enabled": False},
-                output={"enabled": True, "type": "webdataset"},
-            )
-            runner = PipelineRunner(cfg)
-            context = runner.run()
+        cfg = Config(
+            dataset={"name": "youtube_asl", "download": True, "manifest": False},
+            processing={"enabled": False},
+            post_processing={"enabled": False},
+            output={"enabled": True},
+        )
+        runner = PipelineRunner(cfg)
+        runner.run()
 
         mock_output.assert_called_once()
-        assert "output.webdataset" in context.completed_stages

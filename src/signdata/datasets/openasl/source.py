@@ -1,9 +1,7 @@
 """OpenASL source config and acquisition."""
 
 import logging
-import os
 from pathlib import Path
-from typing import Dict, List
 
 import pandas as pd
 from pydantic import BaseModel
@@ -50,7 +48,7 @@ def download(
             "Set it in your config YAML."
         )
 
-    os.makedirs(video_dir, exist_ok=True)
+    Path(video_dir).mkdir(parents=True, exist_ok=True)
 
     tsv_path = source.manifest_tsv
     if not tsv_path or not Path(tsv_path).exists():
@@ -75,14 +73,20 @@ def download(
             "errors": 0,
             "skipped": len(all_yids),
         }
-        report_dir = os.path.join(config.paths.root, "acquire_report")
+        report_dir = Path(config.paths.root) / "acquire_report"
         write_acquire_report(report_dir, stats, missing=[])
         return stats
 
     log.info("Downloading %d / %d videos...", len(to_download), len(all_yids))
 
-    result = _download_videos(to_download, video_dir, source, log)
-    missing = result.pop("missing")
+    result = download_youtube_videos(
+        to_download,
+        video_dir,
+        download_format=source.download_format,
+        rate_limit=source.rate_limit,
+        concurrent_fragments=source.concurrent_fragments,
+        log=log,
+    )
     stats = {
         "total": len(all_yids),
         "downloaded": result["downloaded"],
@@ -90,8 +94,8 @@ def download(
         "skipped": len(existing),
     }
 
-    report_dir = os.path.join(config.paths.root, "acquire_report")
-    write_acquire_report(report_dir, stats, missing)
+    report_dir = Path(config.paths.root) / "acquire_report"
+    write_acquire_report(report_dir, stats, result["missing"])
 
     if source.availability_policy == "fail_fast" and result["errors"] > 0:
         raise RuntimeError(
@@ -101,19 +105,3 @@ def download(
         )
 
     return stats
-
-
-def _download_videos(
-    video_ids: List[str],
-    video_dir: str,
-    source: OpenASLSourceConfig,
-    log: logging.Logger,
-) -> Dict:
-    return download_youtube_videos(
-        video_ids,
-        video_dir,
-        download_format=source.download_format,
-        rate_limit=source.rate_limit,
-        concurrent_fragments=source.concurrent_fragments,
-        log=log,
-    )

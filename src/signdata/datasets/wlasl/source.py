@@ -2,11 +2,10 @@
 
 import json
 import logging
-import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from .._ingestion.availability import (
     AvailabilityPolicy,
@@ -19,11 +18,13 @@ from .._ingestion.youtube import download_video_urls
 class WLASLSourceConfig(BaseModel):
     """Typed config for WLASL adapter."""
 
+    model_config = ConfigDict(extra="forbid")
+
     metadata_json: str = ""
-    split: str = "all"
-    subset: int = 0
+    split: Literal["all", "train", "val", "test"] = "all"
+    subset: int = Field(default=0, ge=0)
     availability_policy: AvailabilityPolicy = "drop_unavailable"
-    download_mode: str = "validate"
+    download_mode: Literal["validate", "download_missing"] = "validate"
     download_format: str = "bestvideo[height>=480]+bestaudio/best"
     rate_limit: str = "5M"
     concurrent_fragments: int = 5
@@ -43,10 +44,7 @@ def iter_filtered_instances(entries: list[dict[str, Any]], source: WLASLSourceCo
 
 
 def get_source_config(config) -> WLASLSourceConfig:
-    source = dict(config.dataset.source)
-    if not source.get("metadata_json") and source.get("annotation_json"):
-        source["metadata_json"] = source["annotation_json"]
-    return WLASLSourceConfig(**source)
+    return WLASLSourceConfig(**config.dataset.source)
 
 
 def validate_release(
@@ -90,10 +88,9 @@ def download_missing(
     if not metadata_json or not Path(metadata_json).exists():
         raise FileNotFoundError(f"WLASL metadata JSON not found: {metadata_json}")
 
-    os.makedirs(video_dir, exist_ok=True)
+    Path(video_dir).mkdir(parents=True, exist_ok=True)
 
-    with open(metadata_json, "r", encoding="utf-8") as f:
-        entries = json.load(f)
+    entries = json.loads(Path(metadata_json).read_text(encoding="utf-8"))
 
     video_urls: Dict[str, str] = {}
     for _, _, _, inst in iter_filtered_instances(entries, source):
@@ -109,7 +106,7 @@ def download_missing(
     if not to_download_ids:
         log.info("All %d videos already downloaded.", len(all_ids))
         stats = {"total": len(all_ids), "downloaded": 0, "errors": 0, "skipped": len(all_ids)}
-        report_dir = os.path.join(config.paths.root, "acquire_report")
+        report_dir = Path(config.paths.root) / "acquire_report"
         write_acquire_report(report_dir, stats, missing=[])
         return stats
 
@@ -130,7 +127,7 @@ def download_missing(
         "errors": result["errors"],
         "skipped": len(existing),
     }
-    report_dir = os.path.join(config.paths.root, "acquire_report")
+    report_dir = Path(config.paths.root) / "acquire_report"
     write_acquire_report(report_dir, stats, missing)
 
     if source.availability_policy == "fail_fast" and result["errors"] > 0:

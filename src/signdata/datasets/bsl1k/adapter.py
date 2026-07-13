@@ -22,11 +22,11 @@ class BSL1KDataset(BOBSLDataset):
 
     @classmethod
     def _uses_implicit_videos_dir(cls, config) -> bool:
-        videos = str(getattr(config.paths, "videos", "") or "").strip()
+        videos = str(config.paths.videos or "").strip()
         if not videos:
             return True
 
-        root = str(getattr(config.paths, "root", "") or "").strip()
+        root = str(config.paths.root or "").strip()
         if not root:
             return False
 

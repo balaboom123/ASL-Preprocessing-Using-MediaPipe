@@ -12,10 +12,6 @@ from . import source as _source
 class How2SignDataset(DatasetAdapter):
     name = "how2sign"
 
-    @classmethod
-    def validate_config(cls, config) -> None:
-        pass
-
     def get_source_config(self, config) -> _source.How2SignSourceConfig:
         return _source.get_source_config(config)
 

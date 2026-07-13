@@ -1,7 +1,6 @@
 """CSL manifest building."""
 
 import logging
-import os
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -11,6 +10,7 @@ import pandas as pd
 
 from .._ingestion.availability import apply_availability_policy_paths
 from .._ingestion.media import get_video_duration, get_video_fps
+from ...utils.manifest import write_manifest
 from .source import (
     CSLSourceConfig,
     DEFAULT_FPS,
@@ -156,8 +156,7 @@ def build(config, source: CSLSourceConfig, log: logging.Logger) -> pd.DataFrame:
     extra = [column for column in df.columns if column not in ordered]
     df = df[ordered + extra]
 
-    os.makedirs(os.path.dirname(manifest_path) or ".", exist_ok=True)
-    df.to_csv(manifest_path, sep="\t", index=False)
+    write_manifest(df, manifest_path)
     return df
 
 

@@ -4,6 +4,7 @@ Covers validate_config, get_source_config, download, and build_manifest.
 """
 
 import json
+import logging
 import os
 import sys
 import types
@@ -18,8 +19,10 @@ from signdata.datasets.youtube_asl import (
     YouTubeASLDataset,
     YouTubeASLSourceConfig,
 )
+from signdata.datasets.youtube_asl.source import _download_transcripts
+from signdata.datasets._ingestion.youtube import _build_yt_config
 from signdata.datasets.how2sign import How2SignDataset, How2SignSourceConfig
-from signdata.datasets.base import DatasetAdapter, BaseDataset
+from signdata.datasets.base import DatasetAdapter
 from signdata.pipeline.context import PipelineContext
 from signdata.registry import DATASET_REGISTRY
 
@@ -27,10 +30,6 @@ from signdata.registry import DATASET_REGISTRY
 # ── DatasetAdapter ABC ──────────────────────────────────────────────────────
 
 class TestDatasetAdapterABC:
-    def test_base_dataset_alias(self):
-        """BaseDataset is an alias for DatasetAdapter."""
-        assert BaseDataset is DatasetAdapter
-
     def test_cannot_instantiate_abstract(self):
         """Cannot instantiate DatasetAdapter directly."""
         with pytest.raises(TypeError):
@@ -156,6 +155,21 @@ class TestYouTubeASLSourceConfig:
         assert source.stop_on_transcript_block is False
 
 
+def test_yt_dlp_config_uses_python_api_keys(tmp_path):
+    config = _build_yt_config(
+        str(tmp_path),
+        "video-id",
+        download_format="best",
+        rate_limit=5_000_000,
+        concurrent_fragments=3,
+    )
+
+    assert config["ratelimit"] == 5_000_000
+    assert config["concurrent_fragment_downloads"] == 3
+    assert "nocheckcertificate" not in config
+    assert all("-" not in key for key in config)
+
+
 class TestYouTubeASLTranscriptDownload:
     @staticmethod
     def _install_fake_youtube_transcript_api(
@@ -211,7 +225,9 @@ class TestYouTubeASLTranscriptDownload:
         self._install_fake_youtube_transcript_api(
             monkeypatch, DummyApi, RequestBlocked
         )
-        monkeypatch.setattr("signdata.datasets.youtube_asl.time.sleep", lambda _: None)
+        monkeypatch.setattr(
+            "signdata.datasets.youtube_asl.source.time.sleep", lambda _: None
+        )
 
         ids_file = tmp_path / "ids.txt"
         ids_file.write_text("vid001\n", encoding="utf-8")
@@ -219,8 +235,8 @@ class TestYouTubeASLTranscriptDownload:
         transcript_dir.mkdir()
 
         source = YouTubeASLSourceConfig(video_ids_file=str(ids_file))
-        stats = YouTubeASLDataset()._download_transcripts(
-            str(ids_file), str(transcript_dir), source
+        stats = _download_transcripts(
+            str(ids_file), str(transcript_dir), source, logging.getLogger("test")
         )
 
         assert stats["downloaded"] == 1
@@ -246,7 +262,9 @@ class TestYouTubeASLTranscriptDownload:
         self._install_fake_youtube_transcript_api(
             monkeypatch, DummyApi, RequestBlocked
         )
-        monkeypatch.setattr("signdata.datasets.youtube_asl.time.sleep", lambda _: None)
+        monkeypatch.setattr(
+            "signdata.datasets.youtube_asl.source.time.sleep", lambda _: None
+        )
 
         ids_file = tmp_path / "ids.txt"
         ids_file.write_text("vid001\nvid002\n", encoding="utf-8")
@@ -257,8 +275,8 @@ class TestYouTubeASLTranscriptDownload:
             video_ids_file=str(ids_file),
             stop_on_transcript_block=True,
         )
-        stats = YouTubeASLDataset()._download_transcripts(
-            str(ids_file), str(transcript_dir), source
+        stats = _download_transcripts(
+            str(ids_file), str(transcript_dir), source, logging.getLogger("test")
         )
 
         assert stats["attempted"] == 1
@@ -404,20 +422,26 @@ class TestHow2SignSourceConfig:
 
         assert isinstance(source, How2SignSourceConfig)
         assert source.manifest_csv == "/data/how2sign/manifest.csv"
-        assert source.split == "all"
 
     def test_source_config_from_source_dict(self):
         cfg = Config(
             dataset={
                 "name": "how2sign",
-                "source": {"manifest_csv": "/data/manifest.csv", "split": "val"},
+                "source": {"manifest_csv": "/data/manifest.csv"},
             },
         )
         adapter = How2SignDataset()
         source = adapter.get_source_config(cfg)
 
         assert source.manifest_csv == "/data/manifest.csv"
-        assert source.split == "val"
+
+    def test_unknown_source_option_rejected(self):
+        cfg = Config(
+            dataset={"name": "how2sign", "source": {"split": "val"}},
+        )
+
+        with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+            How2SignDataset().get_source_config(cfg)
 
 
 # ── How2Sign download ────────────────────────────────────────────────────────

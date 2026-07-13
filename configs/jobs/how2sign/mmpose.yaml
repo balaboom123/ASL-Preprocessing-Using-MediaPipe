@@ -4,7 +4,6 @@ dataset:
   manifest: true
   source:
     manifest_csv: dataset/how2sign/text/how2sign_realigned_val.csv
-    split: val
 
 processing:
   enabled: true
@@ -22,14 +21,10 @@ processing:
     pose_model_config: mmpose::wholebody_2d_keypoint/rtmpose/cocktail14/rtmw-l_8xb320-270e_cocktail14-384x288.py
     pose_model_checkpoint: https://download.openmmlab.com/mmpose/v1/projects/rtmw/rtmw-dw-x-l_simcc-cocktail14_270e-384x288-20231122.pth
     device: "cuda:0"
-    bbox_threshold: 0.5
-    keypoint_threshold: 0.3
     batch_size: 16
 
 post_processing:
   enabled: true
-  recipes:
-    - normalize
   normalize:
     keypoint_preset: mmpose_133_to_85
     mode: xy_isotropic_z_minmax
@@ -37,7 +32,6 @@ post_processing:
 
 output:
   enabled: true
-  type: webdataset
 
 run_name: default
 

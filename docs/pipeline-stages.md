@@ -17,8 +17,8 @@
 | `processing.video2pose` | raw landmarks at `{paths.output}/{run_name}/raw/{sample_id}.npy` | `processing.enabled: true` and `processing.processor: video2pose` |
 | `processing.video2crop` | cropped clips at `{paths.output}/{run_name}/raw/{sample_id}.mp4` | `processing.enabled: true` and `processing.processor: video2crop` |
 | `processing.video2parts` | part streams at `{paths.output}/{run_name}/raw/{sample_id}/` | `processing.enabled: true` and `processing.processor: video2parts` |
-| `post_processing.normalize` | normalized landmarks at `{paths.output}/{run_name}/normalized/{sample_id}.npy` | `post_processing.enabled: true` and `normalize` in `post_processing.recipes` |
-| `output.webdataset` | shards at `{paths.webdataset}/{run_name}/shard-000000.tar` | `output.enabled: true` and `output.type: webdataset` |
+| `post_processing.normalize` | normalized landmarks at `{paths.output}/{run_name}/normalized/{sample_id}.npy` | `post_processing.enabled: true` with a `post_processing.normalize` block |
+| `output.webdataset` | shards at `{paths.webdataset}/{run_name}/shard-000000.tar` | `output.enabled: true` |
 
 If `dataset.manifest` is `false` and `paths.manifest` is set, the runner loads
 the existing manifest before continuing to downstream stages.
@@ -73,7 +73,7 @@ writes landmark arrays into:
 
 Supporting modules live in:
 
-- `src/signdata/processors/sampler/`
+- `src/signdata/utils/video.py`
 - `src/signdata/processors/detection/`
 - `src/signdata/processors/pose/`
 

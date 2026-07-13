@@ -202,8 +202,6 @@ processing:
   parts_config:
     crop_size: 224
     bbox_scale: 1.2
-    store_crops: mp4
-    store_features: false
 ```
 
 The processor should:

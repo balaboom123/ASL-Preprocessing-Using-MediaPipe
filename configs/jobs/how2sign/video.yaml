@@ -4,7 +4,6 @@ dataset:
   manifest: true
   source:
     manifest_csv: dataset/how2sign/text/how2sign_realigned_val.csv
-    split: val
 
 processing:
   enabled: true
@@ -26,7 +25,6 @@ post_processing:
 
 output:
   enabled: true
-  type: webdataset
 
 run_name: default
 

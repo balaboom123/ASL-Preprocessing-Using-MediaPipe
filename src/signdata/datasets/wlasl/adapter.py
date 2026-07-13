@@ -17,11 +17,10 @@ class WLASLDataset(DatasetAdapter):
     @classmethod
     def validate_config(cls, config) -> None:
         source = config.dataset.source
-        if not source.get("metadata_json") and not source.get("annotation_json"):
+        if not source.get("metadata_json"):
             raise ValueError(
                 "wlasl requires dataset.source.metadata_json pointing to "
-                "the official WLASL_v0.3.json file "
-                "(annotation_json is accepted as a compatibility alias)"
+                "the official WLASL_v0.3.json file"
             )
 
     def get_source_config(self, config) -> _source.WLASLSourceConfig:
@@ -32,13 +31,8 @@ class WLASLDataset(DatasetAdapter):
 
         if source.download_mode == "validate":
             stats = _source.validate_release(source, config, self.logger)
-        elif source.download_mode == "download_missing":
-            stats = _source.download_missing(source, config, self.logger)
         else:
-            raise ValueError(
-                f"Unknown download_mode '{source.download_mode}'. "
-                f"Expected 'validate' or 'download_missing'."
-            )
+            stats = _source.download_missing(source, config, self.logger)
 
         context.stats["dataset.download"] = stats
         return context

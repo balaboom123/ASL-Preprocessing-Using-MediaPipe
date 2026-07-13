@@ -127,14 +127,14 @@ class TestProcessingConfig:
                 },
             )
 
-    def test_video2parts_rejects_feature_cache_flag(self):
-        with pytest.raises(ValidationError, match="feature-cache"):
+    def test_video2parts_rejects_unknown_parts_option(self):
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
             ProcessingConfig(
                 processor="video2parts",
                 detection="null",
                 pose="mediapipe",
                 pose_config={"model_complexity": 1},
-                parts_config={"store_features": True},
+                parts_config={"future_option": True},
             )
 
     def test_detection_config_validated_yolo(self):
@@ -199,47 +199,10 @@ class TestProcessingConfig:
         with pytest.raises(ValidationError):
             ProcessingConfig(detection="invalid")
 
-    def test_legacy_frame_skip_maps_to_ratio(self):
-        with pytest.warns(FutureWarning, match="processing.frame_skip is deprecated"):
-            p = ProcessingConfig(
-                processor="video2crop",
-                detection="yolo",
-                detection_config={"model": "yolov8n.pt"},
-                frame_skip=2,
-            )
-        assert p.sample_rate == 0.5
-
-    def test_legacy_target_fps_maps_to_sample_rate(self):
-        with pytest.warns(FutureWarning, match="processing.target_fps is deprecated"):
-            p = ProcessingConfig(
-                processor="video2crop",
-                detection="yolo",
-                detection_config={"model": "yolov8n.pt"},
-                target_fps=24.0,
-            )
-        assert p.sample_rate == 24.0
-
-    def test_legacy_frame_skip_one_maps_to_native(self):
-        with pytest.warns(FutureWarning, match="processing.frame_skip is deprecated"):
-            p = ProcessingConfig(
-                processor="video2pose",
-                detection="null",
-                pose="mediapipe",
-                pose_config={"model_complexity": 1},
-                frame_skip=1,
-            )
-        assert p.sample_rate is None
-
-    def test_legacy_target_fps_and_frame_skip_map_with_warning(self):
-        with pytest.warns(FutureWarning, match="target FPS but no longer keeps a separate detection-only stride"):
-            p = ProcessingConfig(
-                processor="video2crop",
-                detection="yolo",
-                detection_config={"model": "yolov8n.pt"},
-                frame_skip=2,
-                target_fps=24.0,
-            )
-        assert p.sample_rate == 24.0
+    def test_removed_sampling_keys_are_rejected(self):
+        for key in ("frame_skip", "target_fps"):
+            with pytest.raises(ValidationError, match="use processing.sample_rate"):
+                ProcessingConfig(**{key: 2})
 
 
 class TestNormalizeConfig:
@@ -281,15 +244,15 @@ class TestNormalizeConfig:
 class TestPostProcessingConfig:
     def test_defaults(self):
         pp = PostProcessingConfig()
-        assert pp.enabled is True
-        assert pp.recipes == []
+        assert pp.enabled is False
         assert pp.normalize is None
 
     def test_with_normalize(self):
         pp = PostProcessingConfig(
-            recipes=["normalize"],
+            enabled=True,
             normalize={"mode": "isotropic_3d"},
         )
+        assert pp.enabled is True
         assert pp.normalize.mode == "isotropic_3d"
 
 
@@ -297,7 +260,6 @@ class TestOutputConfig:
     def test_defaults(self):
         o = OutputConfig()
         assert o.enabled is True
-        assert o.type == "webdataset"
         assert o.config == {}
 
     def test_with_config(self):
@@ -348,7 +310,6 @@ class TestTypedPoseConfigs:
             pose_model_checkpoint="pose.pth",
         )
         assert c.device == "cuda:0"
-        assert c.bbox_threshold == 0.5
         assert c.batch_size == 16
 
 

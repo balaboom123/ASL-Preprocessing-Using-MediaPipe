@@ -2,12 +2,10 @@
 
 import gc
 import logging
-import os
-from pathlib import Path
 
 from .base import BaseProcessor
 from .detection import create_detector, single_person_check, union_bboxes
-from .video.ffmpeg import FfmpegSamplingParams, ffmpeg_pipe_frames, clip_and_crop
+from .video.ffmpeg import clip_and_crop, ffmpeg_pipe_frames
 from ..registry import register_processor
 from ..utils.manifest import get_timing_columns, resolve_video_path
 
@@ -36,10 +34,6 @@ class Video2CropProcessor(BaseProcessor):
 
         # Create building blocks
         detector = create_detector(cfg.detection, cfg.detection_config)
-        ffmpeg_params = FfmpegSamplingParams(
-            sample_rate=cfg.sample_rate,
-        )
-
         # Load manifest
         df = context.manifest_df
         if df is None:
@@ -56,26 +50,27 @@ class Video2CropProcessor(BaseProcessor):
         try:
             for _, row in df.iterrows():
                 sample_id = row["SAMPLE_ID"]
-                output_path = str(output_dir / f"{sample_id}.mp4")
+                output_path = output_dir / f"{sample_id}.mp4"
 
                 # Skip existing (unless force_all)
-                if not getattr(context, 'force_all', False) and os.path.exists(output_path):
+                if not context.force_all and output_path.exists():
                     skipped += 1
                     continue
 
                 try:
-                    video_path = str(resolve_video_path(row, video_dir))
-                    if not os.path.exists(video_path):
+                    video_path = resolve_video_path(row, video_dir)
+                    if not video_path.exists():
                         self.logger.warning("Video not found: %s", video_path)
                         errors += 1
                         continue
+                    video_path = str(video_path)
 
                     start_sec = float(row[start_col])
                     end_sec = float(row[end_col])
 
                     # Pass 1: decode frames for detection
                     frames = ffmpeg_pipe_frames(
-                        video_path, start_sec, end_sec, ffmpeg_params,
+                        video_path, start_sec, end_sec, cfg.sample_rate,
                     )
 
                     if not frames:
@@ -101,8 +96,8 @@ class Video2CropProcessor(BaseProcessor):
                     # Pass 2: clip + crop with same params
                     ok = clip_and_crop(
                         video_path, start_sec, end_sec,
-                        bbox, ffmpeg_params, cfg.video_config,
-                        output_path,
+                        bbox, cfg.sample_rate, cfg.video_config,
+                        str(output_path),
                     )
                     if ok:
                         processed += 1

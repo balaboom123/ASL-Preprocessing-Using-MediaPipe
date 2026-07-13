@@ -141,7 +141,6 @@ class TestAUTSLSourceConfig:
         source = AUTSLDataset().get_source_config(cfg)
         assert isinstance(source, AUTSLSourceConfig)
         assert source.release_dir == str(tmp_path)
-        assert source.variant == "challenge_2021"
         assert source.split == "train"
         assert source.modality == "rgb"
         assert source.availability_policy == "fail_fast"

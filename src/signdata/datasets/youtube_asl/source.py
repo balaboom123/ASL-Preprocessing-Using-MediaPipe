@@ -2,9 +2,8 @@
 
 import json
 import logging
-import os
 import time
-from glob import glob
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from pydantic import BaseModel
@@ -75,8 +74,8 @@ def download(
     video_dir = config.paths.videos
     transcript_dir = config.paths.transcripts
 
-    os.makedirs(transcript_dir, exist_ok=True)
-    os.makedirs(video_dir, exist_ok=True)
+    Path(transcript_dir).mkdir(parents=True, exist_ok=True)
+    Path(video_dir).mkdir(parents=True, exist_ok=True)
 
     log.info("Starting transcript download...")
     transcript_stats = _download_transcripts(
@@ -93,11 +92,13 @@ def download(
         source,
         log,
     )
-    missing = video_result.pop("missing")
-    video_stats = video_result
+    video_stats = {
+        key: video_result[key]
+        for key in ("total", "downloaded", "errors")
+    }
 
-    report_dir = os.path.join(config.paths.root, "acquire_report")
-    write_acquire_report(report_dir, video_stats, missing)
+    report_dir = Path(config.paths.root) / "acquire_report"
+    write_acquire_report(report_dir, video_stats, video_result["missing"])
 
     if source.availability_policy == "fail_fast" and video_stats["errors"] > 0:
         raise RuntimeError(
@@ -112,16 +113,13 @@ def download(
     }
 
 
-def _get_existing_ids(directory: str, ext: str) -> Set[str]:
-    """Return set of IDs from files with the specified extension."""
-    files = glob(os.path.join(directory, f"*.{ext}"))
-    return {os.path.splitext(os.path.basename(f))[0] for f in files}
-
-
 def _load_video_ids(file_path: str) -> Set[str]:
     """Load video IDs from a text file."""
-    with open(file_path, "r", encoding="utf-8") as f:
-        return {line.strip() for line in f if line.strip()}
+    return {
+        line.strip()
+        for line in Path(file_path).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    }
 
 
 def _download_transcripts(
@@ -130,7 +128,6 @@ def _download_transcripts(
     source: YouTubeASLSourceConfig,
     log: logging.Logger,
 ) -> Dict:
-    from youtube_transcript_api import YouTubeTranscriptApi
     from youtube_transcript_api._errors import (
         IpBlocked,
         NoTranscriptFound,
@@ -139,7 +136,7 @@ def _download_transcripts(
         VideoUnavailable,
     )
 
-    existing_ids = _get_existing_ids(transcript_dir, "json")
+    existing_ids = {path.stem for path in Path(transcript_dir).glob("*.json")}
     all_ids = _load_video_ids(video_id_file)
     ids = sorted(all_ids - existing_ids)
 
@@ -157,7 +154,6 @@ def _download_transcripts(
     error_count = 0
     downloaded = 0
     blocked = False
-    proxies = _build_transcript_proxies(source)
     transcript_client = _build_transcript_client(source)
 
     with tqdm(ids, desc="Downloading transcripts") as pbar:
@@ -165,17 +161,14 @@ def _download_transcripts(
             sleep_time = min(sleep_time, 2)
             time.sleep(sleep_time)
             try:
-                transcript = _fetch_transcript(
-                    transcript_client=transcript_client,
-                    transcript_api_cls=YouTubeTranscriptApi,
-                    video_id=video_id,
+                transcript = transcript_client.fetch(
+                    video_id,
                     languages=source.languages,
-                    proxies=proxies,
                 )
                 transcript = _normalize_transcript_payload(transcript)
-                path = os.path.join(transcript_dir, f"{video_id}.json")
-                with open(path, "w", encoding="utf-8") as f:
-                    f.write(json.dumps(transcript))
+                (Path(transcript_dir) / f"{video_id}.json").write_text(
+                    json.dumps(transcript), encoding="utf-8"
+                )
                 downloaded += 1
             except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable) as e:
                 log.warning("Transcript unavailable for %s: %s", video_id, e)
@@ -208,19 +201,7 @@ def _download_transcripts(
     }
 
 
-def _build_transcript_proxies(
-    source: YouTubeASLSourceConfig,
-) -> Optional[Dict[str, str]]:
-    if not source.transcript_proxy_http and not source.transcript_proxy_https:
-        return None
-
-    return {
-        "http": source.transcript_proxy_http or source.transcript_proxy_https,
-        "https": source.transcript_proxy_https or source.transcript_proxy_http,
-    }
-
-
-def _build_transcript_client(source: YouTubeASLSourceConfig) -> Optional[Any]:
+def _build_transcript_client(source: YouTubeASLSourceConfig) -> Any:
     from youtube_transcript_api import YouTubeTranscriptApi
 
     proxy_config = None
@@ -232,42 +213,7 @@ def _build_transcript_client(source: YouTubeASLSourceConfig) -> Optional[Any]:
             https_url=source.transcript_proxy_https,
         )
 
-    try:
-        return YouTubeTranscriptApi(proxy_config=proxy_config)
-    except TypeError:
-        if proxy_config is not None:
-            return None
-
-    try:
-        return YouTubeTranscriptApi()
-    except TypeError:
-        return None
-
-
-def _fetch_transcript(
-    transcript_client: Optional[Any],
-    transcript_api_cls: Any,
-    video_id: str,
-    languages: List[str],
-    proxies: Optional[Dict[str, str]] = None,
-) -> Any:
-    if transcript_client is not None:
-        if hasattr(transcript_client, "fetch"):
-            return transcript_client.fetch(video_id, languages=languages)
-        if hasattr(transcript_client, "list"):
-            return transcript_client.list(video_id).find_transcript(
-                languages
-            ).fetch()
-
-    if hasattr(transcript_api_cls, "list_transcripts"):
-        return transcript_api_cls.list_transcripts(
-            video_id, proxies=proxies
-        ).find_transcript(languages).fetch()
-
-    kwargs: Dict[str, Any] = {"languages": languages}
-    if proxies is not None:
-        kwargs["proxies"] = proxies
-    return transcript_api_cls.get_transcript(video_id, **kwargs)
+    return YouTubeTranscriptApi(proxy_config=proxy_config)
 
 
 def _normalize_transcript_payload(transcript: Any) -> List[Dict]:
@@ -292,7 +238,7 @@ def _download_videos(
 ) -> Dict:
     existing_ids = get_existing_video_ids(video_dir)
     all_ids = _load_video_ids(video_id_file)
-    ids = list(all_ids - existing_ids)
+    ids = sorted(all_ids - existing_ids)
 
     if not ids:
         log.info("All videos already downloaded.")

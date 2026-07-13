@@ -17,7 +17,7 @@ class CSLDataset(DatasetAdapter):
     @classmethod
     def validate_config(cls, config) -> None:
         source = _source.get_source_config(config)
-        release_dir = source.release_dir or getattr(config.paths, "root", "")
+        release_dir = source.release_dir or config.paths.root
         if not release_dir:
             raise ValueError(
                 "csl requires dataset.source.release_dir or paths.root "
@@ -51,7 +51,6 @@ class CSLDataset(DatasetAdapter):
             "videos": int(df["VIDEO_ID"].nunique()),
             "segments": len(df),
             "signers": int(df["SIGNER_ID"].nunique()) if "SIGNER_ID" in df.columns else 0,
-            "variant": source.variant,
             "protocol": source.protocol,
             "runtime_video_dir": str(runtime_dir),
         }

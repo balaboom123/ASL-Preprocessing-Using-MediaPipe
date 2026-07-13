@@ -16,9 +16,6 @@ class MediaPipeExtractor(LandmarkExtractor):
     468 face (unrefined) + 21 left hand + 21 right hand.
     """
 
-    # MediaPipe does not support true batch inference
-    supports_batch_inference = False
-
     def __init__(self, config):
         self.refine_face = config.refine_face_landmarks
         self.face_count = 478 if self.refine_face else 468
@@ -76,42 +73,6 @@ class MediaPipeExtractor(LandmarkExtractor):
             return np.array(out, dtype=np.float32)
         else:
             return np.zeros((expected_count, 4), dtype=np.float32)
-
-    def process_batch(
-        self,
-        frames: List[np.ndarray],
-        bboxes: Optional[List[Optional[np.ndarray]]] = None,
-        fallback_on_error: bool = True,
-    ) -> List[Optional[np.ndarray]]:
-        """Process a batch of frames sequentially.
-
-        MediaPipe does not support native batch inference, so this
-        processes frames one-by-one with per-frame error handling.
-
-        Args:
-            frames: List of input video frames (BGR format)
-            bboxes: Optional per-frame bounding boxes from upstream
-                detection. Ignored by MediaPipe Holistic, which runs on
-                the full frame.
-            fallback_on_error: If True, return None for failed frames
-                and continue. If False, raise exceptions.
-
-        Returns:
-            List of landmark arrays (or None for failed frames).
-        """
-        # Pre-allocate results list
-        results: List[Optional[np.ndarray]] = [None] * len(frames)
-
-        for i, frame in enumerate(frames):
-            try:
-                landmarks = self.process_frame(frame)
-                results[i] = landmarks
-            except Exception:
-                if not fallback_on_error:
-                    raise
-                # On error, result stays None
-
-        return results
 
     def close(self):
         if self.holistic is not None:

@@ -4,7 +4,6 @@ dataset:
   manifest: true
   source:
     release_dir: dataset/csl
-    variant: continuous_2015
     protocol: split_i
     split: all
     prepare_mode: materialize_missing

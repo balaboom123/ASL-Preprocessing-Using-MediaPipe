@@ -1,31 +1,28 @@
 """CLI argument parsing for Signdata."""
 
 import argparse
-from typing import List, Optional
 
 
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Signdata"
-    )
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Signdata")
     subparsers = parser.add_subparsers(dest="command")
 
     # --- run subcommand ---
     run_parser = subparsers.add_parser("run", help="Run a preprocessing job")
     run_parser.add_argument(
-        "config", nargs="?", default=None,
+        "config", nargs="?",
         help="Path to YAML job config file",
     )
     run_parser.add_argument(
-        "--force-all", action="store_true", default=False,
+        "--force-all", action="store_true",
         help="Force rerun of all stages",
     )
     run_parser.add_argument(
-        "--run-name", default=None,
+        "--run-name",
         help="Override run_name for path isolation",
     )
     run_parser.add_argument(
-        "--list-presets", action="store_true", default=False,
+        "--list-presets", action="store_true",
         help="List available keypoint presets and exit",
     )
     run_parser.add_argument(
@@ -42,7 +39,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Path to YAML experiment config file",
     )
     exp_parser.add_argument(
-        "--force-all", action="store_true", default=False,
+        "--force-all", action="store_true",
         help="Force rerun of all stages in every job",
     )
 
