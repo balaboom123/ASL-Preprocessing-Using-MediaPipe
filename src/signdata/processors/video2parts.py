@@ -3,16 +3,16 @@
 import gc
 import json
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
 
 from .base import BaseProcessor
 from .pose import create_estimator
+from .video.ffmpeg import ffmpeg_pipe_frames, probe_video
 from ..registry import register_processor
 from ..utils.manifest import get_timing_columns, resolve_video_path, row_value
-from ..utils.video import FPSSampler, resolve_effective_sample_fps
+from ..utils.video import resolve_effective_sample_fps
 
 
 BODY_POSE_INDICES = [0, 11, 12, 13, 14, 15, 16]
@@ -39,7 +39,7 @@ def _clip_square(cx: float, cy: float, side: float, width: int, height: int):
 
 def _bbox_from_landmarks(
     landmarks: np.ndarray,
-    frame_shape: Tuple[int, int, int],
+    frame_shape: tuple[int, int, int],
     scale: float,
 ):
     if not _has_points(landmarks):
@@ -57,8 +57,8 @@ def _bbox_from_landmarks(
 
 def _bbox_from_pose_points(
     pose: np.ndarray,
-    indices: List[int],
-    frame_shape: Tuple[int, int, int],
+    indices: list[int],
+    frame_shape: tuple[int, int, int],
     scale: float,
 ):
     return _bbox_from_landmarks(pose[indices], frame_shape, scale)
@@ -67,7 +67,7 @@ def _bbox_from_pose_points(
 def _bbox_from_center(
     center_xy: np.ndarray,
     side: float,
-    frame_shape: Tuple[int, int, int],
+    frame_shape: tuple[int, int, int],
 ):
     height, width = frame_shape[:2]
     return _clip_square(
@@ -112,7 +112,7 @@ def _point_valid(points: np.ndarray, index: int) -> bool:
 def _normalize_upper_body_pose(
     pose: np.ndarray,
     missing_value: float,
-    previous: Optional[np.ndarray] = None,
+    previous: np.ndarray | None = None,
 ):
     if not all(_point_valid(pose, i) for i in BODY_POSE_INDICES):
         if previous is not None:
@@ -144,40 +144,7 @@ def _normalize_upper_body_pose(
     return normalized.astype(np.float32).reshape(-1), True
 
 
-def _read_sampled_frames_with_index(
-    video_path: str,
-    start_sec: float,
-    end_sec: float,
-    sampler,
-    source_fps: float,
-):
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        return [], [], []
-
-    start_frame = int(start_sec * source_fps)
-    end_frame = int(end_sec * source_fps)
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-
-    sampler.reset()
-    frames, indices, times = [], [], []
-    current = start_frame
-
-    while current <= end_frame:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        if sampler.take():
-            frames.append(frame)
-            indices.append(current)
-            times.append(current / source_fps)
-        current += 1
-
-    cap.release()
-    return frames, indices, times
-
-
-def _write_video(path: Path, frames: List[np.ndarray], fps: float, codec: str) -> bool:
+def _write_video(path: Path, frames: list[np.ndarray], fps: float, codec: str) -> bool:
     if not frames:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -245,22 +212,34 @@ class Video2PartsProcessor(BaseProcessor):
                         continue
                     video_path = str(video_path)
 
-                    cap = cv2.VideoCapture(video_path)
-                    src_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
-                    cap.release()
+                    metadata = probe_video(video_path)
+                    if metadata is None:
+                        errors += 1
+                        continue
+                    _, _, src_fps = metadata
                     if src_fps <= 0:
                         errors += 1
                         continue
 
                     start_sec = float(row[start_col])
                     end_sec = float(row[end_col])
-                    sampler = FPSSampler(src_fps, cfg.sample_rate)
-                    frames, frame_indices, frame_times = _read_sampled_frames_with_index(
-                        video_path, start_sec, end_sec, sampler, src_fps,
+                    frames = ffmpeg_pipe_frames(
+                        video_path, start_sec, end_sec, cfg.sample_rate,
                     )
                     if not frames:
                         errors += 1
                         continue
+
+                    effective_fps = resolve_effective_sample_fps(
+                        src_fps, cfg.sample_rate,
+                    )
+                    output_fps = float(effective_fps or src_fps)
+                    frame_times = [
+                        start_sec + i / output_fps for i in range(len(frames))
+                    ]
+                    frame_indices = [
+                        int(round(t * src_fps)) for t in frame_times
+                    ]
 
                     landmarks = []
                     for i in range(0, len(frames), batch_size):
@@ -338,9 +317,6 @@ class Video2PartsProcessor(BaseProcessor):
                             right_bbox or (parts_cfg.missing_value,) * 4,
                         ])
                         valid.append([face_valid, left_valid, right_valid, body_valid])
-
-                    effective_fps = resolve_effective_sample_fps(src_fps, cfg.sample_rate)
-                    output_fps = float(effective_fps or src_fps)
 
                     ok = all([
                         _write_video(sample_dir / "face.mp4", face_frames, output_fps, parts_cfg.codec),

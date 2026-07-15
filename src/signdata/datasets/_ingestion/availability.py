@@ -33,25 +33,26 @@ def _apply_policy(
     item_name: str,
 ) -> pd.DataFrame:
     if policy == "mark_unavailable":
-        result = df.copy()
-        result["AVAILABLE"] = is_available
-        return result
+        return df.assign(AVAILABLE=is_available)
+
+    if policy != "drop_unavailable":
+        return df
 
     missing_count = int((~is_available).sum())
-    if policy == "drop_unavailable" and missing_count:
-        result = df[is_available].reset_index(drop=True)
-        logger.info(
-            "Dropped %d rows with unavailable %s (%d remaining).",
-            missing_count, item_name, len(result),
-        )
-        return result
+    if not missing_count:
+        return df
 
-    return df
+    result = df[is_available].reset_index(drop=True)
+    logger.info(
+        "Dropped %d rows with unavailable %s (%d remaining).",
+        missing_count, item_name, len(result),
+    )
+    return result
 
 
 def apply_availability_policy(
     df: pd.DataFrame,
-    video_dir: str,
+    video_dir: str | Path,
     policy: AvailabilityPolicy,
 ) -> pd.DataFrame:
     """Filter or annotate manifest rows based on video availability.
@@ -129,7 +130,7 @@ def apply_availability_policy_paths(
     base_dir = Path(base_dir)
 
     if rel_path_col not in df.columns:
-        return apply_availability_policy(df, str(base_dir), policy)
+        return apply_availability_policy(df, base_dir, policy)
 
     is_available = df[rel_path_col].apply(
         lambda path: (

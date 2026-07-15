@@ -5,7 +5,7 @@ import argparse
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Signdata")
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
     # --- run subcommand ---
     run_parser = subparsers.add_parser("run", help="Run a preprocessing job")

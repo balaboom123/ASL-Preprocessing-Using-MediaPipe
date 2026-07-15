@@ -260,11 +260,13 @@ class TestOutputConfig:
     def test_defaults(self):
         o = OutputConfig()
         assert o.enabled is True
-        assert o.config == {}
+        assert o.max_shard_count == 10_000
+        assert o.max_shard_size is None
 
-    def test_with_config(self):
-        o = OutputConfig(config={"max_shard_count": 5000})
-        assert o.config["max_shard_count"] == 5000
+    def test_with_limits(self):
+        o = OutputConfig(max_shard_count=5000, max_shard_size=1_000_000)
+        assert o.max_shard_count == 5000
+        assert o.max_shard_size == 1_000_000
 
 
 class TestPathsConfig:
@@ -323,6 +325,14 @@ class TestTypeCoercion:
         )
         assert p.max_workers == 8
         assert isinstance(p.max_workers, int)
+
+        with pytest.raises(ValidationError):
+            ProcessingConfig(
+                processor="video2crop",
+                detection="yolo",
+                detection_config={"model": "yolov8n.pt"},
+                max_workers=0,
+            )
 
     def test_bool_field(self):
         n = NormalizeConfig(select_keypoints=False)

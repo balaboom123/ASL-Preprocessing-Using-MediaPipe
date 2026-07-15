@@ -1,7 +1,5 @@
 """YouTube-ASL dataset adapter."""
 
-from pathlib import Path
-
 from ..base import DatasetAdapter
 from ...registry import register_dataset
 from . import manifest as _manifest
@@ -33,8 +31,7 @@ class YouTubeASLDataset(DatasetAdapter):
         source = self.get_source_config(config)
         manifest_path, df, stats = _manifest.build(config, source, self.logger)
 
-        context.manifest_path = Path(manifest_path)
-        context.manifest_df = df
+        self._set_manifest(context, manifest_path, df)
         context.stats["dataset.manifest"] = stats
         self.logger.info(
             "Manifest built: %d videos, %d segments -> %s",

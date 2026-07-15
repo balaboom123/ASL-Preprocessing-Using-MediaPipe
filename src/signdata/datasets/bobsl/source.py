@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Iterable, Literal, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from .._ingestion.availability import AvailabilityPolicy, get_existing_video_ids
 
@@ -36,6 +36,8 @@ _ALIGNMENT_ALIASES = {
 
 class BOBSLSourceConfig(BaseModel):
     """Typed config for the BOBSL adapter."""
+
+    model_config = ConfigDict(extra="forbid")
 
     release_dir: str = ""
     view: ViewName = "subtitle_slt"

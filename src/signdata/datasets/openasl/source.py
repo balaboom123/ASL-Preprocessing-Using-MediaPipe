@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 import pandas as pd
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from .._ingestion.availability import (
     AvailabilityPolicy,
@@ -18,6 +18,8 @@ from .._ingestion.youtube import download_youtube_videos
 class OpenASLSourceConfig(BaseModel):
     """Typed config for OpenASL adapter."""
 
+    model_config = ConfigDict(extra="forbid")
+
     manifest_tsv: str = ""
     bbox_json: str = ""
     text_column: str = "en"
@@ -27,7 +29,9 @@ class OpenASLSourceConfig(BaseModel):
     )
     rate_limit: str = "5M"
     concurrent_fragments: int = 5
-    text_processing: TextProcessingConfig = TextProcessingConfig()
+    text_processing: TextProcessingConfig = Field(
+        default_factory=TextProcessingConfig
+    )
 
 
 def get_source_config(config) -> OpenASLSourceConfig:
@@ -62,7 +66,7 @@ def download(
         )
 
     all_yids = set(tsv["yid"].dropna().astype(str).unique())
-    existing = get_existing_video_ids(video_dir)
+    existing = all_yids & get_existing_video_ids(video_dir)
     to_download = sorted(all_yids - existing)
 
     if not to_download:

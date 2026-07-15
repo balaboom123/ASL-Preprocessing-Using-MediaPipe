@@ -10,19 +10,15 @@ frame.  Unlike video2crop, this processor:
 """
 
 import gc
-import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from .base import BaseProcessor
-from .detection import create_detector
+from .detection import create_detector, union_bbox_tuples
 from .detection.base import Detection
 from .video.ffmpeg import clip_and_crop, iter_ffmpeg_frame_batches
 from ..registry import register_processor
 from ..utils.manifest import resolve_video_path, row_value
 from ..utils.video import get_video_duration
-
-logger = logging.getLogger(__name__)
 
 
 def _get_output_relpath(row) -> Path:
@@ -41,9 +37,9 @@ def _get_output_relpath(row) -> Path:
     )
 
 
-def _build_video_tasks(df, video_dir: str) -> List[Tuple[str, Path]]:
+def _build_video_tasks(df, video_dir: str) -> list[tuple[str, Path]]:
     """Deduplicate segment-level manifests into one task per source video."""
-    tasks: List[Tuple[str, Path]] = []
+    tasks: list[tuple[str, Path]] = []
     seen_video_paths = set()
 
     for _, row in df.iterrows():
@@ -57,23 +53,14 @@ def _build_video_tasks(df, video_dir: str) -> List[Tuple[str, Path]]:
 
 
 def _update_union_bbox(
-    current: Optional[Tuple[float, float, float, float]],
-    detections: List[List[Detection]],
-) -> Optional[Tuple[float, float, float, float]]:
+    current: tuple[float, float, float, float] | None,
+    detections: list[list[Detection]],
+) -> tuple[float, float, float, float] | None:
     """Fold detection bboxes into an existing union bbox."""
-    for frame_dets in detections:
-        for det in frame_dets:
-            x1, y1, x2, y2 = det.bbox
-            if current is None:
-                current = (x1, y1, x2, y2)
-            else:
-                current = (
-                    min(current[0], x1),
-                    min(current[1], y1),
-                    max(current[2], x2),
-                    max(current[3], y2),
-                )
-    return current
+    bboxes = [det.bbox for frame_dets in detections for det in frame_dets]
+    if current is not None:
+        bboxes.append(current)
+    return union_bbox_tuples(bboxes) if bboxes else None
 
 
 @register_processor("video2compression")
@@ -151,7 +138,7 @@ class Video2CompressionProcessor(BaseProcessor):
                         continue
 
                     batch_size = getattr(cfg.detection_config, "batch_size", 16)
-                    bbox: Optional[Tuple[float, float, float, float]] = None
+                    bbox: tuple[float, float, float, float] | None = None
                     decoded_frames = 0
 
                     # Pass 1: stream frames for detection (whole video)
@@ -185,8 +172,8 @@ class Video2CompressionProcessor(BaseProcessor):
                     else:
                         errors += 1
 
-                except Exception as e:
-                    self.logger.error("Error processing %s: %s", output_label, e)
+                except Exception as exc:
+                    self.logger.error("Error processing %s: %s", output_label, exc)
                     errors += 1
 
         finally:

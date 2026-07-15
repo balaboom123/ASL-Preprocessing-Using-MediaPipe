@@ -4,7 +4,6 @@ import csv
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import pandas as pd
 from tqdm import tqdm
@@ -34,7 +33,6 @@ def build(
         )
 
     text_opts = source.text_processing.model_dump()
-    processed_count = 0
     all_segments = []
 
     for json_file in tqdm(json_files, desc="Building manifest"):
@@ -54,15 +52,15 @@ def build(
                 text_opts,
             )
 
-            if segments:
-                all_segments.extend(segments)
-                processed_count += 1
+            all_segments.extend(segments)
 
-        except Exception as e:
-            log.error("Error processing %s: %s", video_id, e)
+        except Exception as exc:
+            log.error("Error processing %s: %s", video_id, exc)
 
-    columns = ["VIDEO_ID", "SAMPLE_ID", "START", "END", "TEXT"]
-    df = pd.DataFrame(all_segments, columns=columns)
+    df = pd.DataFrame(
+        all_segments,
+        columns=["VIDEO_ID", "SAMPLE_ID", "START", "END", "TEXT"],
+    )
     video_dir = config.paths.videos
     if not df.empty and video_dir and Path(video_dir).is_dir():
         df = apply_availability_policy(df, video_dir, source.availability_policy)
@@ -77,30 +75,26 @@ def build(
     )
 
     return manifest_path, df, {
-        "videos": processed_count,
-        "segments": len(all_segments),
+        "videos": int(df["VIDEO_ID"].nunique()),
+        "segments": len(df),
     }
 
 
 def _process_segments(
-    transcripts: List[Dict],
+    transcripts: list[dict],
     video_id: str,
     max_text_length: int,
     min_duration: float,
     max_duration: float,
-    text_options: Optional[Dict] = None,
-) -> List[Dict]:
+    text_options: dict | None = None,
+) -> list[dict]:
     processed = []
-    idx = 0
-
-    valid = [
-        t for t in transcripts
-        if "text" in t and "start" in t and "duration" in t
-    ]
-
     text_kw = text_options or {}
 
-    for entry in valid:
+    for entry in transcripts:
+        if not {"text", "start", "duration"}.issubset(entry):
+            continue
+
         text = normalize_text(entry["text"], **text_kw)
         dur = entry["duration"]
 
@@ -111,11 +105,10 @@ def _process_segments(
         ):
             processed.append({
                 "VIDEO_ID": video_id,
-                "SAMPLE_ID": f"{video_id}-{idx:03d}",
+                "SAMPLE_ID": f"{video_id}-{len(processed):03d}",
                 "START": entry["start"],
                 "END": entry["start"] + dur,
                 "TEXT": text,
             })
-            idx += 1
 
     return processed

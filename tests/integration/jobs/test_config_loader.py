@@ -696,15 +696,12 @@ class TestLoadConfig:
 
     def test_cli_overrides_apply(self, project_root):
         import signdata.datasets
-        import signdata.processors
 
-        yaml_path = str(
-            project_root / "configs" / "datasets" / "how2sign" / "pose_mediapipe.yaml"
+        yaml_path = (
+            project_root / "configs" / "jobs" / "youtube_asl" / "mediapipe.yaml"
         )
-        if not os.path.exists(yaml_path):
-            pytest.skip("Config file not found")
 
-        cfg = load_config(yaml_path, overrides=["processing.max_workers=16"])
+        cfg = load_config(str(yaml_path), overrides=["processing.max_workers=16"])
         assert cfg.processing.max_workers == 16
 
     def test_missing_dataset_raises(self, tmp_path):

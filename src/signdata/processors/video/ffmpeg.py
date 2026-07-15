@@ -1,9 +1,9 @@
-"""FFmpeg-based video processing utilities for video2crop."""
+"""FFmpeg-based video processing utilities."""
 
 import logging
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -14,7 +14,7 @@ from ...utils.video import resolve_effective_sample_fps
 logger = logging.getLogger(__name__)
 
 
-def _video_metadata(video_path: str) -> tuple[int, int, float] | None:
+def probe_video(video_path: str) -> tuple[int, int, float] | None:
     cap = cv2.VideoCapture(video_path)
     try:
         if not cap.isOpened():
@@ -32,8 +32,8 @@ def ffmpeg_pipe_frames(
     video_path: str,
     start_sec: float,
     end_sec: float,
-    sample_rate: Optional[float],
-) -> List[np.ndarray]:
+    sample_rate: float | None,
+) -> list[np.ndarray]:
     """Decode frames from a video segment via ffmpeg pipe.
 
     Pass 1 of the two-pass video2crop pipeline. Returns BGR frames
@@ -49,14 +49,14 @@ def ffmpeg_pipe_frames(
         List of BGR frames as numpy arrays.
     """
     try:
-        frames: List[np.ndarray] = []
+        frames: list[np.ndarray] = []
         for batch in iter_ffmpeg_frame_batches(
             video_path, start_sec, end_sec, sample_rate, batch_size=64,
         ):
             frames.extend(batch)
         return frames
-    except Exception as e:
-        logger.error("ffmpeg pipe error: %s", e)
+    except Exception as exc:
+        logger.error("ffmpeg pipe error: %s", exc)
         return []
 
 
@@ -64,9 +64,9 @@ def iter_ffmpeg_frame_batches(
     video_path: str,
     start_sec: float,
     end_sec: float,
-    sample_rate: Optional[float],
+    sample_rate: float | None,
     batch_size: int,
-) -> Iterator[List[np.ndarray]]:
+) -> Iterator[list[np.ndarray]]:
     """Stream decoded frames from ffmpeg in bounded-size batches.
 
     Unlike :func:`ffmpeg_pipe_frames`, this function does not buffer the full
@@ -75,7 +75,7 @@ def iter_ffmpeg_frame_batches(
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
 
-    metadata = _video_metadata(video_path)
+    metadata = probe_video(video_path)
     if metadata is None:
         return
     width, height, source_fps = metadata
@@ -117,7 +117,7 @@ def iter_ffmpeg_frame_batches(
             raise RuntimeError("ffmpeg stdout pipe was not created")
 
         frame_size = width * height * 3
-        batch: List[np.ndarray] = []
+        batch: list[np.ndarray] = []
 
         while True:
             raw = proc.stdout.read(frame_size)
@@ -160,8 +160,8 @@ def clip_and_crop(
     video_path: str,
     start_sec: float,
     end_sec: float,
-    bbox: Tuple[float, float, float, float],
-    sample_rate: Optional[float],
+    bbox: tuple[float, float, float, float],
+    sample_rate: float | None,
     video_config: VideoProcessingConfig,
     output_path: str,
 ) -> bool:
@@ -186,7 +186,7 @@ def clip_and_crop(
 
     duration = end_sec - start_sec
 
-    metadata = _video_metadata(video_path)
+    metadata = probe_video(video_path)
     if metadata is None:
         return False
     frame_w, frame_h, source_fps = metadata
@@ -233,6 +233,6 @@ def clip_and_crop(
             logger.error("ffmpeg crop error: %s", proc.stderr.decode()[:200])
             return False
         return True
-    except Exception as e:
-        logger.error("ffmpeg crop error: %s", e)
+    except Exception as exc:
+        logger.error("ffmpeg crop error: %s", exc)
         return False

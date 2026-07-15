@@ -22,7 +22,7 @@ import signdata.processors  # noqa: F401 – trigger registrations
 from signdata.registry import PROCESSOR_REGISTRY
 
 
-def test_video_metadata_releases_capture(monkeypatch):
+def test_probe_video_releases_capture(monkeypatch):
     class Capture:
         released = False
 
@@ -42,7 +42,7 @@ def test_video_metadata_releases_capture(monkeypatch):
     capture = Capture()
     monkeypatch.setattr(ffmpeg.cv2, "VideoCapture", lambda _: capture)
 
-    assert ffmpeg._video_metadata("video.mp4") == (640, 480, 30.0)
+    assert ffmpeg.probe_video("video.mp4") == (640, 480, 30.0)
     assert capture.released
 
 

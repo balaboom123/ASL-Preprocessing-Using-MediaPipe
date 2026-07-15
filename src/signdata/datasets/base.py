@@ -72,6 +72,15 @@ class DatasetAdapter(ABC):
         videos = config.paths.videos
         return Path(videos) if videos else None
 
+    @staticmethod
+    def _set_manifest(
+        context: "PipelineContext",
+        manifest_path: str | Path,
+        manifest_df: Any,
+    ) -> None:
+        context.manifest_path = Path(manifest_path)
+        context.manifest_df = manifest_df
+
     def validate_loaded_manifest(
         self,
         config: "Config",

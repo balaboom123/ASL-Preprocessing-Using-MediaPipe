@@ -1,15 +1,12 @@
 """video2crop processor: video → cropped video (.mp4)."""
 
 import gc
-import logging
 
 from .base import BaseProcessor
 from .detection import create_detector, single_person_check, union_bboxes
 from .video.ffmpeg import clip_and_crop, ffmpeg_pipe_frames
 from ..registry import register_processor
 from ..utils.manifest import get_timing_columns, resolve_video_path
-
-logger = logging.getLogger(__name__)
 
 
 @register_processor("video2crop")

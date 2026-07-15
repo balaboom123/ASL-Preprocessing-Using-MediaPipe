@@ -4,9 +4,9 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from .._ingestion.availability import (
     AvailabilityPolicy,
@@ -22,6 +22,8 @@ DownloadMode = Literal["validate", "download_missing"]
 
 class MSASLSourceConfig(BaseModel):
     """Typed config for MS-ASL adapter."""
+
+    model_config = ConfigDict(extra="forbid")
 
     annotations_dir: str = ""
     split: SplitName = "all"
@@ -50,7 +52,7 @@ def extract_video_id(url: str) -> str:
     return url.split("/")[-1][:11]
 
 
-def load_split_json(ann_dir: Path, split: str) -> List[Dict]:
+def load_split_json(ann_dir: Path, split: str) -> list[dict]:
     json_path = ann_dir / f"MSASL_{split}.json"
     if not json_path.exists():
         raise FileNotFoundError(f"MS-ASL annotation file not found: {json_path}")
@@ -121,7 +123,7 @@ def download_missing(
             vid = extract_video_id(entry["url"])
             all_video_ids.add(vid)
 
-    existing = get_existing_video_ids(video_dir, recursive=True)
+    existing = all_video_ids & get_existing_video_ids(video_dir, recursive=True)
     to_download = sorted(all_video_ids - existing)
 
     if not to_download:

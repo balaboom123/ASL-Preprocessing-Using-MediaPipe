@@ -150,7 +150,6 @@ def _build_isolated_manifest(
         )
 
     rows: List[Dict[str, Any]] = []
-    missing_class_rows: List[tuple[str, str]] = []
 
     for index, record in enumerate(records):
         episode = _coerce_episode(record)
@@ -170,7 +169,6 @@ def _build_isolated_manifest(
 
         class_id = _coerce_int(_first_value(record, _CLASS_ID_KEYS))
         if class_id is None:
-            missing_class_rows.append((episode, gloss))
             class_id = -1
 
         rel_path = _resolve_rel_path(episode, video_lookup)
@@ -198,48 +196,23 @@ def _build_isolated_manifest(
             row["SIGNER_ID"] = str(signer_id)
         rows.append(row)
 
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df
+    gloss_to_class = {}
+    next_class_id = 0
+    for row in rows:
+        class_id = row["CLASS_ID"]
+        if class_id >= 0:
+            gloss_to_class.setdefault(row["GLOSS"], class_id)
+            next_class_id = max(next_class_id, class_id + 1)
+    for row in rows:
+        if row["CLASS_ID"] >= 0:
+            continue
+        gloss = row["GLOSS"]
+        if gloss not in gloss_to_class:
+            gloss_to_class[gloss] = next_class_id
+            next_class_id += 1
+        row["CLASS_ID"] = gloss_to_class[gloss]
 
-    if missing_class_rows:
-        explicit_gloss_to_class: Dict[str, int] = {}
-        used_class_ids = {
-            class_id
-            for class_id in (
-                _coerce_int(row.get("CLASS_ID")) for _, row in df.iterrows()
-            )
-            if class_id is not None and class_id >= 0
-        }
-        for _, row in df.iterrows():
-            class_id = _coerce_int(row.get("CLASS_ID"))
-            gloss = str(row.get("GLOSS", ""))
-            if class_id is not None and class_id >= 0 and gloss:
-                explicit_gloss_to_class.setdefault(gloss, class_id)
-
-        generated_gloss_to_class: Dict[str, int] = {}
-        next_class_id = (max(used_class_ids) + 1) if used_class_ids else 0
-        resolved_ids: List[int] = []
-        for _, row in df.iterrows():
-            class_id = _coerce_int(row.get("CLASS_ID"))
-            gloss = str(row.get("GLOSS", ""))
-            if class_id is None or class_id < 0:
-                if gloss in explicit_gloss_to_class:
-                    resolved_ids.append(explicit_gloss_to_class[gloss])
-                    continue
-
-                if gloss not in generated_gloss_to_class:
-                    while next_class_id in used_class_ids:
-                        next_class_id += 1
-                    generated_gloss_to_class[gloss] = next_class_id
-                    used_class_ids.add(next_class_id)
-                    next_class_id += 1
-                resolved_ids.append(generated_gloss_to_class[gloss])
-            else:
-                resolved_ids.append(class_id)
-        df["CLASS_ID"] = resolved_ids
-
-    return df
+    return pd.DataFrame(rows)
 
 
 def _read_subtitle_segments(path: Path) -> List[Dict[str, Any]]:

@@ -3,15 +3,42 @@
 This is the most important test file — covers core numerical logic.
 """
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
+from signdata.config.schema import Config
+from signdata.post_processors import normalize as normalize_module
 from signdata.post_processors.normalize import (
+    NormalizePostProcessor,
     _apply_keypoint_reduction,
     _apply_visibility_mask,
     _normalize_clip_xyz,
     _process_single_file,
 )
+
+
+def test_single_worker_normalizes_without_process_pool(tmp_path, monkeypatch):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    np.save(raw_dir / "sample.npy", np.ones((2, 85, 4), dtype=np.float32))
+    config = Config(
+        dataset={"name": "test"},
+        processing={"enabled": False, "max_workers": 1},
+        post_processing={"enabled": True, "normalize": {}},
+    )
+    context = SimpleNamespace(output_dir=tmp_path, force_all=False, stats={})
+    monkeypatch.setattr(
+        normalize_module,
+        "ProcessPoolExecutor",
+        lambda **_: pytest.fail("single worker should run in-process"),
+    )
+
+    NormalizePostProcessor(config).run(context)
+
+    assert (tmp_path / "normalized" / "sample.npy").exists()
+    assert context.stats["post_processing.normalize"]["success"] == 1
 
 
 # ── _apply_keypoint_reduction ───────────────────────────────────────────────

@@ -188,6 +188,7 @@ class TestWLASLDownload:
         video_dir = tmp_path / "videos"
         video_dir.mkdir()
         (video_dir / "00001.mp4").touch()
+        (video_dir / "unrelated.mp4").touch()
         manifest_path = tmp_path / "manifest.tsv"
         root_dir = tmp_path / "root"
         root_dir.mkdir()
@@ -562,7 +563,9 @@ class TestWLASLBuildManifest:
         assert context.manifest_df.iloc[0]["END"] == 3.6
         assert captured["path"].endswith("00001.webm")
 
-    def test_build_manifest_download_missing_uses_source_timing(self, tmp_path):
+    def test_build_manifest_download_missing_uses_source_timing(
+        self, tmp_path, monkeypatch,
+    ):
         metadata_path = tmp_path / "WLASL_v0.3.json"
         _write_metadata(metadata_path, [
             {
@@ -588,6 +591,11 @@ class TestWLASLBuildManifest:
             video_dir,
             manifest_path,
             source={"download_mode": "download_missing"},
+        )
+        monkeypatch.setattr(
+            wlasl_manifest,
+            "get_video_duration",
+            lambda _: pytest.fail("source timing should not probe the video"),
         )
 
         context = self._make_context(cfg)

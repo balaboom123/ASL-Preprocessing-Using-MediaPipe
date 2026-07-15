@@ -20,6 +20,7 @@ import pytest
 
 from signdata.config.schema import Config
 from signdata.datasets.openasl import OpenASLDataset, OpenASLSourceConfig
+from signdata.datasets.openasl import source as openasl_source
 from signdata.pipeline.context import PipelineContext
 from signdata.registry import DATASET_REGISTRY
 from signdata.datasets._ingestion.availability import get_existing_video_ids
@@ -539,17 +540,25 @@ class TestOpenASLDownload:
         assert context.stats["dataset.download"]["downloaded"] == 0
         assert context.stats["dataset.download"]["total"] == 1  # 1 unique yid
 
-    def test_download_skips_webm_extension(self, tmp_path):
+    def test_download_skips_webm_extension(self, tmp_path, monkeypatch):
         """[P1] Extension-agnostic skip: .webm files are recognized."""
         tsv_path = tmp_path / "openasl.tsv"
         pd.DataFrame({
-            "vid": ["s1"], "yid": ["yt1"],
-            "start": [0.0], "end": [1.0],
+            "vid": ["s1", "s2"], "yid": ["yt1", "yt2"],
+            "start": [0.0, 1.0], "end": [1.0, 2.0],
         }).to_csv(tsv_path, sep="\t", index=False)
 
         video_dir = tmp_path / "videos"
         video_dir.mkdir()
         (video_dir / "yt1.webm").touch()
+        (video_dir / "unrelated.mp4").touch()
+        monkeypatch.setattr(
+            openasl_source,
+            "download_youtube_videos",
+            lambda video_ids, *_args, **_kwargs: {
+                "downloaded": len(video_ids), "errors": 0, "missing": [],
+            },
+        )
 
         cfg = Config(
             dataset={
@@ -561,7 +570,9 @@ class TestOpenASLDownload:
         adapter = OpenASLDataset()
         context = PipelineContext(config=cfg, dataset=adapter)
         context = adapter.download(cfg, context)
-        assert context.stats["dataset.download"]["downloaded"] == 0
+        assert context.stats["dataset.download"] == {
+            "total": 2, "downloaded": 1, "errors": 0, "skipped": 1,
+        }
 
     def test_download_writes_report(self, tmp_path):
         """[P2] Download writes download_report.json even on skip."""

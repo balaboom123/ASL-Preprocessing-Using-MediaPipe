@@ -1,25 +1,20 @@
 """Detection validation utilities."""
 
-from typing import List, Optional, Tuple
-
 from .base import Detection
 
 
-def single_person_check(detections: List[List[Detection]]) -> bool:
+def single_person_check(detections: list[list[Detection]]) -> bool:
     """Check that at most one person was detected in every frame.
 
     Returns True if all frames have 0 or 1 detections, meaning we can
     confidently assume a single signer.
     """
-    for frame_dets in detections:
-        if len(frame_dets) > 1:
-            return False
-    return True
+    return all(len(frame_dets) <= 1 for frame_dets in detections)
 
 
 def union_bboxes(
-    detections: List[List[Detection]],
-) -> Optional[Tuple[float, float, float, float]]:
+    detections: list[list[Detection]],
+) -> tuple[float, float, float, float] | None:
     """Compute the enclosing bounding box across all frames.
 
     Returns (x1, y1, x2, y2) covering all detections in pixel
@@ -47,8 +42,8 @@ def union_bboxes(
 
 
 def union_bbox_tuples(
-    bboxes: List[Tuple[float, float, float, float]],
-) -> Tuple[float, float, float, float]:
+    bboxes: list[tuple[float, float, float, float]],
+) -> tuple[float, float, float, float]:
     """Compute the enclosing bounding box from raw bbox tuples."""
     x1 = min(b[0] for b in bboxes)
     y1 = min(b[1] for b in bboxes)
@@ -58,11 +53,11 @@ def union_bbox_tuples(
 
 
 def apply_bbox_padding(
-    bbox: Tuple[float, float, float, float],
+    bbox: tuple[float, float, float, float],
     padding: float,
     frame_width: int,
     frame_height: int,
-) -> Tuple[int, int, int, int]:
+) -> tuple[int, int, int, int]:
     """Apply padding to a bounding box and clamp to frame dimensions.
 
     Args:
@@ -86,11 +81,3 @@ def apply_bbox_padding(
     y2 = min(frame_height, int(y2 + pad_y))
 
     return (x1, y1, x2, y2)
-
-
-__all__ = [
-    "single_person_check",
-    "union_bboxes",
-    "union_bbox_tuples",
-    "apply_bbox_padding",
-]

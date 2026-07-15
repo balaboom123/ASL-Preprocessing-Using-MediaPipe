@@ -1,7 +1,5 @@
 """WLASL dataset adapter."""
 
-from pathlib import Path
-
 from ..base import DatasetAdapter
 from ...registry import register_dataset
 from . import manifest as _manifest
@@ -39,9 +37,8 @@ class WLASLDataset(DatasetAdapter):
 
     def build_manifest(self, config, context):
         source = self.get_source_config(config)
-        df = _manifest.build(config, source, self.logger)
-        context.manifest_path = Path(config.paths.manifest)
-        context.manifest_df = df
+        df = _manifest.build(config, source)
+        self._set_manifest(context, config.paths.manifest, df)
         context.stats["dataset.manifest"] = {
             "videos": int(df["VIDEO_ID"].nunique()),
             "segments": len(df),

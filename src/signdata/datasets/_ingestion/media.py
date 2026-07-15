@@ -15,11 +15,12 @@ def get_video_fps(video_path: str) -> float:
     """Return video FPS (frames per second) as float."""
     try:
         cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            return 0.0
-        fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
-        cap.release()
-        return float(fps)
+        try:
+            if not cap.isOpened():
+                return 0.0
+            return float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        finally:
+            cap.release()
     except Exception:
         return 0.0
 

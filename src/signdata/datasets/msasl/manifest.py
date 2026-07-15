@@ -3,7 +3,7 @@
 import logging
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -49,21 +49,17 @@ def build(config, source: MSASLSourceConfig, log: logging.Logger) -> pd.DataFram
 
     class_lookup = _load_class_lookup(ann_dir)
     rel_path_lookup = _index_video_rel_paths(config.paths.videos)
-    selected_entries: List[tuple[str, Dict[str, Any]]] = []
-    video_id_counts: Counter[str] = Counter()
-
-    for split in get_selected_splits(source):
-        entries = load_split_json(ann_dir, split)
-        for entry in entries:
-            selected_entries.append((split, entry))
-            video_id = extract_video_id(str(entry["url"]))
-            video_id_counts[video_id] += 1
-
-    rows: List[Dict[str, Any]] = []
-
+    selected_entries = [
+        (split, entry)
+        for split in get_selected_splits(source)
+        for entry in load_split_json(ann_dir, split)
+    ]
+    video_id_counts = Counter(
+        extract_video_id(str(entry["url"])) for _, entry in selected_entries
+    )
     allow_shared_video_paths = source.download_mode == "download_missing"
-    for split, entry in selected_entries:
-        row = _build_row(
+    rows = [
+        _build_row(
             entry,
             split,
             class_lookup,
@@ -71,8 +67,8 @@ def build(config, source: MSASLSourceConfig, log: logging.Logger) -> pd.DataFram
             video_id_counts,
             allow_shared_video_paths=allow_shared_video_paths,
         )
-        if row is not None:
-            rows.append(row)
+        for split, entry in selected_entries
+    ]
 
     df = pd.DataFrame.from_records(rows, columns=_MANIFEST_COLUMNS)
 
@@ -92,7 +88,7 @@ def build(config, source: MSASLSourceConfig, log: logging.Logger) -> pd.DataFram
     return df
 
 
-def _load_class_lookup(ann_dir: Path) -> Dict[int, str]:
+def _load_class_lookup(ann_dir: Path) -> dict[int, str]:
     raw = load_classes_json(ann_dir)
 
     if isinstance(raw, dict):
@@ -106,7 +102,7 @@ def _load_class_lookup(ann_dir: Path) -> Dict[int, str]:
             "MS-ASL classes JSON must be a list or dict containing a list of classes."
         )
 
-    lookup: Dict[int, str] = {}
+    lookup: dict[int, str] = {}
     for idx, item in enumerate(raw):
         if isinstance(item, str):
             lookup[idx] = item
@@ -136,7 +132,7 @@ def _load_class_lookup(ann_dir: Path) -> Dict[int, str]:
     return lookup
 
 
-def _index_video_rel_paths(video_dir: Optional[str]) -> Dict[str, List[str]]:
+def _index_video_rel_paths(video_dir: str | None) -> dict[str, list[str]]:
     if not video_dir or not Path(video_dir).is_dir():
         return {}
 
@@ -150,21 +146,21 @@ def _index_video_rel_paths(video_dir: Optional[str]) -> Dict[str, List[str]]:
         key=lambda path: (len(path.relative_to(base_dir).parts), str(path.relative_to(base_dir))),
     )
 
-    rel_paths: Dict[str, List[str]] = {}
+    rel_paths: dict[str, list[str]] = {}
     for path in files:
         rel_paths.setdefault(path.stem, []).append(path.relative_to(base_dir).as_posix())
     return rel_paths
 
 
 def _build_row(
-    entry: Dict[str, Any],
+    entry: dict[str, Any],
     split: str,
-    class_lookup: Dict[int, str],
-    rel_path_lookup: Dict[str, List[str]],
+    class_lookup: dict[int, str],
+    rel_path_lookup: dict[str, list[str]],
     video_id_counts: Counter[str],
     *,
     allow_shared_video_paths: bool,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any]:
     video_id = extract_video_id(str(entry["url"]))
     start = float(entry["start_time"])
     end = float(entry["end_time"])
@@ -180,7 +176,7 @@ def _build_row(
     )
 
     text = str(entry.get("text", "")).strip() or gloss
-    row: Dict[str, Any] = {
+    row: dict[str, Any] = {
         "SAMPLE_ID": sample_id,
         "VIDEO_ID": video_id,
         "START": start,
@@ -215,7 +211,7 @@ def _build_row(
 def _resolve_rel_path(
     sample_id: str,
     video_id: str,
-    rel_path_lookup: Dict[str, List[str]],
+    rel_path_lookup: dict[str, list[str]],
     video_id_counts: Counter[str],
     *,
     allow_shared_video_paths: bool,
@@ -233,7 +229,7 @@ def _resolve_rel_path(
     return f"{sample_id}.mp4"
 
 
-def _coerce_int(value: Any) -> Optional[int]:
+def _coerce_int(value: Any) -> int | None:
     try:
         return int(value) if value not in (None, "") else None
     except (TypeError, ValueError):

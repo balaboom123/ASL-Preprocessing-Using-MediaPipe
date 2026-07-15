@@ -20,16 +20,6 @@ def main():
 
     args = parse_args()
 
-    if args.command is None:
-        print("Usage: python -m signdata <command> <config.yaml> [options]")
-        print()
-        print("Commands:")
-        print("  run         Run a single preprocessing job")
-        print("  experiment  Run a multi-job experiment")
-        print()
-        print("Run 'python -m signdata <command> --help' for details.")
-        sys.exit(1)
-
     if args.command == "run":
         # Handle --list-presets early exit (no config file needed)
         if args.list_presets:
@@ -42,12 +32,12 @@ def main():
             print("Error: config file is required (unless using --list-presets)")
             sys.exit(1)
 
-        overrides = args.override or []
+        overrides = args.override
 
         if args.run_name:
             overrides.append(f"run_name={args.run_name}")
 
-        config = load_config(args.config, overrides=overrides or None)
+        config = load_config(args.config, overrides=overrides)
 
         runner = PipelineRunner(
             config,

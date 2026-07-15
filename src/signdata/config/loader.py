@@ -2,7 +2,7 @@
 
 import copy
 from pathlib import Path, PureWindowsPath
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 
@@ -10,7 +10,7 @@ from .schema import Config
 from ..registry import DATASET_REGISTRY
 
 
-def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     """Recursively merge override into base. Override values take precedence."""
     result = copy.deepcopy(base)
     for key, value in override.items():
@@ -21,7 +21,7 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
     return result
 
 
-def _normalize_dataset_shorthand(raw: Dict[str, Any]) -> Dict[str, Any]:
+def _normalize_dataset_shorthand(raw: dict[str, Any]) -> dict[str, Any]:
     """Expand dataset shorthand so nested merges preserve dataset.name."""
     dataset = raw.get("dataset")
     if isinstance(dataset, str):
@@ -29,7 +29,7 @@ def _normalize_dataset_shorthand(raw: Dict[str, Any]) -> Dict[str, Any]:
     return raw
 
 
-def _load_yaml_mapping(yaml_path: str) -> Dict[str, Any]:
+def _load_yaml_mapping(yaml_path: str) -> dict[str, Any]:
     """Load a YAML file and require a mapping at the top level."""
     raw = yaml.safe_load(Path(yaml_path).read_text(encoding="utf-8"))
 
@@ -42,7 +42,7 @@ def _load_yaml_mapping(yaml_path: str) -> Dict[str, Any]:
     return _normalize_dataset_shorthand(raw)
 
 
-def _resolve_base_config_paths(base_ref: Any, config_path: Path) -> List[Path]:
+def _resolve_base_config_paths(base_ref: Any, config_path: Path) -> list[Path]:
     """Resolve one or more base-config paths relative to the current config."""
     if isinstance(base_ref, str):
         refs = [base_ref]
@@ -61,8 +61,8 @@ def _resolve_base_config_paths(base_ref: Any, config_path: Path) -> List[Path]:
 
 def _load_raw_config(
     yaml_path: str,
-    stack: Optional[List[Path]] = None,
-) -> Dict[str, Any]:
+    stack: list[Path] | None = None,
+) -> dict[str, Any]:
     """Load a YAML config with optional recursive base-config merging."""
     config_path = _coerce_path(yaml_path).resolve()
     stack = stack or []
@@ -76,7 +76,7 @@ def _load_raw_config(
     if base_ref is None:
         return raw
 
-    merged: Dict[str, Any] = {}
+    merged: dict[str, Any] = {}
     for base_path in _resolve_base_config_paths(base_ref, config_path):
         merged = deep_merge(
             merged,
@@ -185,8 +185,8 @@ def resolve_paths(config: Config, project_root: Path) -> Config:
 
 def load_config(
     yaml_path: str,
-    overrides: Optional[List[str]] = None,
-    dict_overrides: Optional[Dict[str, Any]] = None,
+    overrides: list[str] | None = None,
+    dict_overrides: dict[str, Any] | None = None,
 ) -> Config:
     """Load config from YAML file.
 
@@ -223,33 +223,27 @@ def load_config(
     if not dataset_raw:
         raise ValueError("Config must specify 'dataset' field")
 
-    dataset_name = (
-        dataset_raw if isinstance(dataset_raw, str)
-        else dataset_raw.get("name") if isinstance(dataset_raw, dict)
-        else None
-    )
+    dataset_name = dataset_raw.get("name") if isinstance(dataset_raw, dict) else None
     if not dataset_name:
         raise ValueError("Config must specify 'dataset.name' field")
 
-    if dataset_name not in DATASET_REGISTRY:
+    dataset_cls = DATASET_REGISTRY.get(dataset_name)
+    if dataset_cls is None:
         raise ValueError(
             f"Unknown dataset '{dataset_name}'. "
             f"Available: {list(DATASET_REGISTRY.keys())}"
         )
 
-    DATASET_REGISTRY[dataset_name].validate_raw_inputs(raw)
-
-    config = Config(**raw)
-    config = resolve_paths(config, project_root)
+    dataset_cls.validate_raw_inputs(raw)
+    config = resolve_paths(Config(**raw), project_root)
 
     # Run dataset-specific validation against the final config
-    dataset_cls = DATASET_REGISTRY[dataset_name]
     dataset_cls.validate_config(config)
 
     return config
 
 
-def _set_nested(d: Dict, key: str, value: Any) -> None:
+def _set_nested(d: dict, key: str, value: Any) -> None:
     """Set a nested dictionary value using dot-separated key."""
     parts = key.split(".")
     for part in parts[:-1]:

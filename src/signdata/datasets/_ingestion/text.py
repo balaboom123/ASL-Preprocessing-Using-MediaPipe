@@ -1,18 +1,15 @@
-"""Dataset-ingestion text normalization helpers.
-
-These helpers are used only by dataset adapters during ``dataset.download``
-and ``dataset.manifest``. Pipeline-wide manifest and processing utilities
-remain in ``signdata.utils``.
-"""
+"""Dataset-ingestion text normalization helpers."""
 
 import re
 
 import ftfy
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class TextProcessingConfig(BaseModel):
     """Text normalization options passed to ``normalize_text()``."""
+
+    model_config = ConfigDict(extra="forbid")
 
     fix_encoding: bool = True
     normalize_whitespace: bool = True

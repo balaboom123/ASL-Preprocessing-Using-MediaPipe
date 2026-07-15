@@ -1,19 +1,15 @@
 """video2pose processor: video → pose landmarks (.npy)."""
 
 import gc
-import logging
 
-import cv2
 import numpy as np
 
 from .base import BaseProcessor
 from .detection import create_detector, single_person_check
 from .pose import create_estimator
+from .video.ffmpeg import ffmpeg_pipe_frames
 from ..registry import register_processor
 from ..utils.manifest import get_timing_columns, resolve_video_path
-from ..utils.video import FPSSampler, read_sampled_frames
-
-logger = logging.getLogger(__name__)
 
 
 def _extract_bboxes(detections, frames):
@@ -90,19 +86,8 @@ class Video2PoseProcessor(BaseProcessor):
                     start_sec = float(row[start_col])
                     end_sec = float(row[end_col])
 
-                    # Get source FPS for sampler
-                    cap = cv2.VideoCapture(video_path)
-                    src_fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
-                    cap.release()
-
-                    if src_fps <= 0:
-                        errors += 1
-                        continue
-
-                    # Read sampled frames
-                    sampler = FPSSampler(src_fps, cfg.sample_rate)
-                    frames = read_sampled_frames(
-                        video_path, start_sec, end_sec, sampler, src_fps,
+                    frames = ffmpeg_pipe_frames(
+                        video_path, start_sec, end_sec, cfg.sample_rate,
                     )
 
                     if not frames:

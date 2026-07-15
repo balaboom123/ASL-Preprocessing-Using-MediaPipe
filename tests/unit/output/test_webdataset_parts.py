@@ -111,3 +111,27 @@ def test_webdataset_prefers_normalized_pose_bytes(tmp_path):
 
     with tarfile.open(ctx.webdataset_dir / "shard-000000.tar") as tar:
         assert tar.extractfile(f"{sample_id}.npy").read() == b"normalized"
+
+
+def test_webdataset_does_not_create_empty_shard(tmp_path):
+    cfg = Config(
+        dataset={"name": "how2sign"},
+        processing={"enabled": False, "processor": "video2pose"},
+    )
+    ctx = PipelineContext(
+        config=cfg,
+        dataset=How2SignDataset(),
+        manifest_df=pd.DataFrame({
+            "VIDEO_ID": ["video_001"],
+            "SAMPLE_ID": ["missing"],
+            "START": [0.0],
+            "END": [1.0],
+        }),
+        output_dir=tmp_path / "output",
+        webdataset_dir=tmp_path / "wds",
+    )
+
+    WebDatasetOutput(cfg).run(ctx)
+
+    assert not list(ctx.webdataset_dir.glob("*.tar"))
+    assert ctx.stats["output.webdataset"]["shards"] == 0

@@ -1,7 +1,6 @@
 """MMDet person detection backend."""
 
 import logging
-from typing import List, Tuple
 
 import numpy as np
 
@@ -52,17 +51,6 @@ class MMDetDetector(PersonDetector):
             self.config.batch_size,
         )
 
-    def _remember_safe_batch_size(self, safe_batch_size: int) -> None:
-        if safe_batch_size <= 0:
-            return
-
-        previous_batch_size = self._effective_batch_size
-        new_batch_size = min(previous_batch_size, safe_batch_size)
-        if new_batch_size >= previous_batch_size:
-            return
-
-        self._effective_batch_size = new_batch_size
-
     def _report_effective_batch_size_if_needed(self) -> None:
         current_batch_size = self._effective_batch_size
         previous_batch_size = self._reported_effective_batch_size
@@ -78,12 +66,6 @@ class MMDetDetector(PersonDetector):
                 new_batch_size=current_batch_size,
             )
         )
-
-    def _record_oom_ceiling(self, oom_batch_size: int) -> None:
-        """Cap effective batch size after an OOM so it persists across videos."""
-        if oom_batch_size <= 1:
-            return
-        self._remember_safe_batch_size(max(1, oom_batch_size // 2))
 
     def _raise_terminal_oom(self, attempted_batch_size: int, exc: BaseException) -> None:
         learned_batch_size = None
@@ -101,20 +83,20 @@ class MMDetDetector(PersonDetector):
             )
         ) from exc
 
-    def detect_batch(self, frames: List[np.ndarray]) -> List[List[Detection]]:
+    def detect_batch(self, frames: list[np.ndarray]) -> list[list[Detection]]:
         if not frames:
             return []
 
         from mmdet.apis import inference_detector
 
-        all_detections: List[List[Detection]] = []
+        all_detections: list[list[Detection]] = []
         start = 0
 
         while start < len(frames):
-            batch_size = max(1, self._effective_batch_size)
+            batch_size = self._effective_batch_size
             chunk = frames[start : start + batch_size]
             chunk_len = len(chunk)
-            batch_results, _ = self._infer_chunk_adaptive(inference_detector, chunk)
+            batch_results = self._infer_chunk_adaptive(inference_detector, chunk)
             self._report_effective_batch_size_if_needed()
 
             for result in batch_results:
@@ -144,10 +126,10 @@ class MMDetDetector(PersonDetector):
     def _infer_chunk_adaptive(
         self,
         inference_detector,
-        chunk: List[np.ndarray],
-    ) -> Tuple[List, int]:
+        chunk: list[np.ndarray],
+    ) -> list:
         try:
-            return self._infer_chunk(inference_detector, chunk), len(chunk)
+            return self._infer_chunk(inference_detector, chunk)
         except Exception as exc:
             if not is_cuda_oom_error(exc):
                 raise
@@ -155,25 +137,24 @@ class MMDetDetector(PersonDetector):
                 self._raise_terminal_oom(1, exc)
 
             clear_cuda_cache(self.config.device)
-            self._record_oom_ceiling(len(chunk))
-            mid = max(1, len(chunk) // 2)
+            self._effective_batch_size = min(
+                self._effective_batch_size,
+                len(chunk) // 2,
+            )
+            mid = len(chunk) // 2
             logger.debug(
                 "MMDet inference OOM for batch size %d; retrying as %d + %d",
                 len(chunk), mid, len(chunk) - mid,
             )
-            left_results, left_safe = self._infer_chunk_adaptive(
+            return self._infer_chunk_adaptive(
                 inference_detector,
                 chunk[:mid],
-            )
-            right_results, right_safe = self._infer_chunk_adaptive(
+            ) + self._infer_chunk_adaptive(
                 inference_detector,
                 chunk[mid:],
             )
-            safe_batch_size = max(left_safe, right_safe)
-            self._remember_safe_batch_size(safe_batch_size)
-            return left_results + right_results, safe_batch_size
 
-    def _infer_chunk(self, inference_detector, chunk: List[np.ndarray]):
+    def _infer_chunk(self, inference_detector, chunk: list[np.ndarray]):
         if self._use_sequential:
             return [inference_detector(self.detector, f) for f in chunk]
 

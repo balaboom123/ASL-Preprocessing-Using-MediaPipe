@@ -2,8 +2,8 @@
 
 import logging
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import nullcontext
 from pathlib import Path
-from typing import List, Tuple
 
 import numpy as np
 from tqdm import tqdm
@@ -35,7 +35,7 @@ def _load_clip(path: str) -> np.ndarray:
 
 def _apply_keypoint_reduction(
     clip_xyzv: np.ndarray,
-    keypoint_indices: List[int],
+    keypoint_indices: list[int],
 ) -> np.ndarray:
     """Reduce keypoints by selecting specific indices."""
     if clip_xyzv.ndim != 3:
@@ -133,7 +133,7 @@ def _normalize_clip_xyz(
     return out
 
 
-def _process_single_file(args) -> Tuple[str, bool, str]:
+def _process_single_file(args) -> tuple[str, bool, str]:
     """Process a single landmark file through the normalization pipeline."""
     input_path, output_path, normalize_config = args
     input_path = Path(input_path)
@@ -182,8 +182,8 @@ def _process_single_file(args) -> Tuple[str, bool, str]:
         np.save(output_path, flattened)
 
         return filename, True, ""
-    except Exception as e:
-        return filename, False, str(e)
+    except Exception as exc:
+        return filename, False, str(exc)
 
 
 class NormalizePostProcessor:
@@ -226,21 +226,30 @@ class NormalizePostProcessor:
 
         self.logger.info("Normalizing %d files from %s", len(tasks), input_dir)
 
-        max_workers = cfg.processing.max_workers
         success = skip = errors = 0
 
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            with tqdm(total=len(tasks), desc="Normalizing") as pbar:
-                for fname, ok, msg in executor.map(_process_single_file, tasks):
-                    if ok:
-                        if msg == "skipped (exists)":
-                            skip += 1
-                        else:
-                            success += 1
+        executor = (
+            ProcessPoolExecutor(max_workers=cfg.processing.max_workers)
+            if cfg.processing.max_workers > 1
+            else nullcontext()
+        )
+        with executor as pool:
+            results = (
+                pool.map(_process_single_file, tasks)
+                if pool is not None
+                else map(_process_single_file, tasks)
+            )
+            for fname, ok, msg in tqdm(
+                results, total=len(tasks), desc="Normalizing"
+            ):
+                if ok:
+                    if msg == "skipped (exists)":
+                        skip += 1
                     else:
-                        errors += 1
-                        self.logger.error("Failed: %s - %s", fname, msg)
-                    pbar.update(1)
+                        success += 1
+                else:
+                    errors += 1
+                    self.logger.error("Failed: %s - %s", fname, msg)
 
         context.stats["post_processing.normalize"] = {
             "total": len(tasks),

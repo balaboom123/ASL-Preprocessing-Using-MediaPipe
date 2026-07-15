@@ -57,7 +57,10 @@ class ExperimentRunner:
             if dict_overrides:
                 logger.info(
                     "  Overrides: %s",
-                    ", ".join(f"{key}={value}" for key, value in dict_overrides.items()),
+                    ", ".join(
+                        f"{key}={value}"
+                        for key, value in dict_overrides.items()
+                    ),
                 )
 
             try:

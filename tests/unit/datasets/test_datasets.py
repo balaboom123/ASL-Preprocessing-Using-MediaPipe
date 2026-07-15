@@ -137,6 +137,19 @@ class TestYouTubeASLSourceConfig:
         assert source.text_processing.strip_punctuation is True
         assert source.text_processing.fix_encoding is True  # default preserved
 
+    @pytest.mark.parametrize(
+        "source",
+        [
+            {"unknown_option": True},
+            {"text_processing": {"unknown_option": True}},
+        ],
+    )
+    def test_unknown_source_options_rejected(self, source):
+        cfg = Config(dataset={"name": "youtube_asl", "source": source})
+
+        with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+            YouTubeASLDataset().get_source_config(cfg)
+
     def test_source_config_transcript_network_options(self):
         cfg = Config(
             dataset={

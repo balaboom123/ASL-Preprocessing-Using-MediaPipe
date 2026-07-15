@@ -92,7 +92,7 @@ python -m signdata run configs/jobs/lsa64/mediapipe.yaml
 
 # Override config values from the command line
 python -m signdata run configs/jobs/youtube_asl/mediapipe.yaml \
-  --override processing.max_workers=8 stop_at=extract
+  --override processing.max_workers=8
 ```
 
 Both modes produce [WebDataset](https://github.com/webdataset/webdataset) tar shards for efficient training data loading. See [Pipeline Stages](docs/pipeline-stages.md) for detailed output formats and data shapes.

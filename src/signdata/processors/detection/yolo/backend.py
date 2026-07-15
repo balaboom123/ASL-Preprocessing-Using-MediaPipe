@@ -1,7 +1,6 @@
 """YOLO person detection backend."""
 
 import logging
-from typing import List, Tuple
 
 import numpy as np
 
@@ -105,17 +104,6 @@ class YOLODetector(PersonDetector):
             self.config.batch_size,
         )
 
-    def _remember_safe_batch_size(self, safe_batch_size: int) -> None:
-        if safe_batch_size <= 0:
-            return
-
-        previous_batch_size = self._effective_batch_size
-        new_batch_size = min(previous_batch_size, safe_batch_size)
-        if new_batch_size >= previous_batch_size:
-            return
-
-        self._effective_batch_size = new_batch_size
-
     def _report_effective_batch_size_if_needed(self) -> None:
         current_batch_size = self._effective_batch_size
         previous_batch_size = self._reported_effective_batch_size
@@ -131,16 +119,6 @@ class YOLODetector(PersonDetector):
                 new_batch_size=current_batch_size,
             )
         )
-
-    def _record_oom_ceiling(self, oom_batch_size: int) -> None:
-        """Cap effective batch size after an OOM at ``oom_batch_size``.
-
-        Called eagerly so the learned ceiling persists across videos even
-        if the recursive retry ultimately raises a terminal OOM.
-        """
-        if oom_batch_size <= 1:
-            return
-        self._remember_safe_batch_size(max(1, oom_batch_size // 2))
 
     def _raise_terminal_oom(self, attempted_batch_size: int, exc: BaseException) -> None:
         learned_batch_size = None
@@ -208,7 +186,7 @@ class YOLODetector(PersonDetector):
         )
         self._runtime_device_verified = True
 
-    def _predict_chunk(self, chunk: List[np.ndarray], *, half: bool):
+    def _predict_chunk(self, chunk: list[np.ndarray], *, half: bool):
         results = self.model.predict(
             source=chunk,
             device=self._predict_device,
@@ -218,7 +196,7 @@ class YOLODetector(PersonDetector):
         self._verify_runtime_device()
         return results
 
-    def _predict_with_precision_fallback(self, chunk: List[np.ndarray]):
+    def _predict_with_precision_fallback(self, chunk: list[np.ndarray]):
         if self.use_fp16:
             try:
                 return self._predict_chunk(chunk, half=True)
@@ -252,10 +230,10 @@ class YOLODetector(PersonDetector):
 
     def _predict_chunk_adaptive(
         self,
-        chunk: List[np.ndarray],
-    ) -> Tuple[List, int]:
+        chunk: list[np.ndarray],
+    ) -> list:
         try:
-            return list(self._predict_with_precision_fallback(chunk)), len(chunk)
+            return list(self._predict_with_precision_fallback(chunk))
         except Exception as exc:
             if not is_cuda_oom_error(exc):
                 raise
@@ -273,7 +251,7 @@ class YOLODetector(PersonDetector):
                     self._reset_predictor()
                     clear_cuda_cache(self.config.device)
                     try:
-                        return list(self._predict_chunk(chunk, half=False)), 1
+                        return list(self._predict_chunk(chunk, half=False))
                     except Exception as retry_exc:
                         if is_cuda_oom_error(retry_exc):
                             clear_cuda_cache(self.config.device)
@@ -282,30 +260,32 @@ class YOLODetector(PersonDetector):
                 self._raise_terminal_oom(1, exc)
 
             clear_cuda_cache(self.config.device)
-            self._record_oom_ceiling(len(chunk))
-            mid = max(1, len(chunk) // 2)
+            self._effective_batch_size = min(
+                self._effective_batch_size,
+                len(chunk) // 2,
+            )
+            mid = len(chunk) // 2
             logger.debug(
                 "YOLO inference OOM for batch size %d; retrying as %d + %d",
                 len(chunk), mid, len(chunk) - mid,
             )
-            left_results, left_safe = self._predict_chunk_adaptive(chunk[:mid])
-            right_results, right_safe = self._predict_chunk_adaptive(chunk[mid:])
-            safe_batch_size = max(left_safe, right_safe)
-            self._remember_safe_batch_size(safe_batch_size)
-            return left_results + right_results, safe_batch_size
+            return (
+                self._predict_chunk_adaptive(chunk[:mid])
+                + self._predict_chunk_adaptive(chunk[mid:])
+            )
 
-    def detect_batch(self, frames: List[np.ndarray]) -> List[List[Detection]]:
+    def detect_batch(self, frames: list[np.ndarray]) -> list[list[Detection]]:
         if not frames:
             return []
 
-        all_detections: List[List[Detection]] = []
+        all_detections: list[list[Detection]] = []
         start = 0
 
         while start < len(frames):
-            batch_size = max(1, self._effective_batch_size)
+            batch_size = self._effective_batch_size
             chunk = frames[start : start + batch_size]
             chunk_len = len(chunk)
-            results, _ = self._predict_chunk_adaptive(chunk)
+            results = self._predict_chunk_adaptive(chunk)
             self._report_effective_batch_size_if_needed()
 
             for i, result in enumerate(results):

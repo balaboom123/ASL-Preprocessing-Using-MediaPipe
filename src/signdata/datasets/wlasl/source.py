@@ -100,7 +100,7 @@ def download_missing(
             video_urls[video_id] = url
 
     all_ids = set(video_urls.keys())
-    existing = get_existing_video_ids(video_dir)
+    existing = all_ids & get_existing_video_ids(video_dir)
     to_download_ids = sorted(all_ids - existing)
 
     if not to_download_ids:

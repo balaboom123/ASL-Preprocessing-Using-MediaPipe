@@ -53,6 +53,8 @@ The pipeline runner dispatches to the processor specified by
 - `video2crop` — video → cropped video (.mp4), using detection + `src/signdata/processors/video/ffmpeg.py`
 - `video2parts` — video → face/hand crop streams plus upper-body pose, using MediaPipe Holistic
 
+All processors decode video segments through `processors/video/ffmpeg.py`.
+
 When enabled, post-processing runs landmark normalization.
 
 ## PipelineContext

@@ -4,11 +4,13 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class JobEntry(BaseModel):
     """A single pipeline job within an experiment."""
+
+    model_config = ConfigDict(extra="forbid")
 
     config: str  # path to job YAML (relative to configs/ or absolute)
     overrides: dict[str, Any] = Field(default_factory=dict)
@@ -34,6 +36,8 @@ class ExperimentConfig(BaseModel):
         description: Optional longer description.
         jobs: Ordered list of pipeline jobs to execute.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str
     description: str = ""

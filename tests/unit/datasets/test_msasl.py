@@ -170,6 +170,7 @@ class TestMSASLDownload:
         video_dir = tmp_path / "videos"
         (video_dir / "class0").mkdir(parents=True)
         (video_dir / "class0" / "aaaaaaaaaaa.mp4").touch()
+        (video_dir / "unrelated.mp4").touch()
         manifest_path = tmp_path / "manifest.tsv"
         root_dir = tmp_path / "root"
         root_dir.mkdir()

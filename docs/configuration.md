@@ -193,7 +193,7 @@ Relative file paths in `dataset.source`, such as `video_ids_file`,
 | `detection` | `"yolo"` \| `"mediapipe"` \| `"mmdet"` \| `"null"` | `"null"` | Detection backend |
 | `pose` | `"mediapipe"` \| `"mmpose"` \| `null` | `null` | Pose backend; required for `video2pose` and `video2parts` |
 | `sample_rate` | `float?` | `0.5` | `null` = native FPS, `0 < value < 1` = keep ratio, `value >= 1` = absolute FPS |
-| `max_workers` | `int` | `1` | Worker count used by processors and post-processors |
+| `max_workers` | `int` | `1` | Worker count used by post-processing |
 | `detection_config` | backend-specific model | `null` | Required for non-`null` detection backends |
 | `pose_config` | backend-specific model | `null` | Required for `video2pose` and `video2parts` |
 | `video_config` | `VideoProcessingConfig?` | auto-created for `video2crop` | Crop/output settings for `video2crop` |
@@ -320,21 +320,13 @@ source FPS. It does not upsample or invent frames.
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | `bool` | `true` | Run the output stage |
-| `config` | `dict` | `{}` | Writer-specific settings |
-
-## `output.config`
-
-For the built-in WebDataset writer:
-
-| Field | Type | Runtime Default | Description |
-|---|---|---|---|
 | `max_shard_count` | `int` | `10000` | Max samples per shard |
 | `max_shard_size` | `int?` | `null` | Max shard size in bytes |
 
 ## CLI Examples
 
 ```bash
-# Change number of workers
+# Change number of normalization workers
 python -m signdata run configs/jobs/youtube_asl/mediapipe.yaml \
   --override processing.max_workers=8
 

@@ -1,7 +1,5 @@
 """How2Sign dataset adapter."""
 
-from pathlib import Path
-
 from ..base import DatasetAdapter
 from ...registry import register_dataset
 from . import manifest as _manifest
@@ -25,8 +23,7 @@ class How2SignDataset(DatasetAdapter):
         source = self.get_source_config(config)
         manifest_path, df = _manifest.build(config, source)
 
-        context.manifest_path = Path(manifest_path)
-        context.manifest_df = df
+        self._set_manifest(context, manifest_path, df)
         context.stats["dataset.manifest"] = {
             "videos": df["VIDEO_ID"].nunique() if "VIDEO_ID" in df.columns else 0,
             "segments": len(df),

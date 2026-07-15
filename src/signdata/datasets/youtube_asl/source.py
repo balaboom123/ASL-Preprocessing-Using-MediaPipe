@@ -4,9 +4,9 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from tqdm import tqdm
 
 from .._ingestion.availability import (
@@ -46,19 +46,25 @@ DEFAULT_DOWNLOAD_FORMAT = (
 class YouTubeASLSourceConfig(BaseModel):
     """Typed config for YouTube-ASL adapter."""
 
+    model_config = ConfigDict(extra="forbid")
+
     video_ids_file: str = ""
-    languages: List[str] = DEFAULT_TRANSCRIPT_LANGUAGES.copy()
+    languages: list[str] = Field(
+        default_factory=lambda: DEFAULT_TRANSCRIPT_LANGUAGES.copy()
+    )
     availability_policy: AvailabilityPolicy = "drop_unavailable"
     download_format: str = DEFAULT_DOWNLOAD_FORMAT
     rate_limit: str = "5M"
     concurrent_fragments: int = 5
-    transcript_proxy_http: Optional[str] = None
-    transcript_proxy_https: Optional[str] = None
+    transcript_proxy_http: str | None = None
+    transcript_proxy_https: str | None = None
     stop_on_transcript_block: bool = True
     max_text_length: int = 300
     min_duration: float = 0.2
     max_duration: float = 60.0
-    text_processing: TextProcessingConfig = TextProcessingConfig()
+    text_processing: TextProcessingConfig = Field(
+        default_factory=TextProcessingConfig
+    )
 
 
 def get_source_config(config) -> YouTubeASLSourceConfig:
@@ -113,7 +119,7 @@ def download(
     }
 
 
-def _load_video_ids(file_path: str) -> Set[str]:
+def _load_video_ids(file_path: str) -> set[str]:
     """Load video IDs from a text file."""
     return {
         line.strip()
@@ -127,7 +133,7 @@ def _download_transcripts(
     transcript_dir: str,
     source: YouTubeASLSourceConfig,
     log: logging.Logger,
-) -> Dict:
+) -> dict:
     from youtube_transcript_api._errors import (
         IpBlocked,
         NoTranscriptFound,
@@ -216,7 +222,7 @@ def _build_transcript_client(source: YouTubeASLSourceConfig) -> Any:
     return YouTubeTranscriptApi(proxy_config=proxy_config)
 
 
-def _normalize_transcript_payload(transcript: Any) -> List[Dict]:
+def _normalize_transcript_payload(transcript: Any) -> list[dict]:
     if hasattr(transcript, "to_raw_data"):
         transcript = transcript.to_raw_data()
 
@@ -235,7 +241,7 @@ def _download_videos(
     video_dir: str,
     source: YouTubeASLSourceConfig,
     log: logging.Logger,
-) -> Dict:
+) -> dict:
     existing_ids = get_existing_video_ids(video_dir)
     all_ids = _load_video_ids(video_id_file)
     ids = sorted(all_ids - existing_ids)

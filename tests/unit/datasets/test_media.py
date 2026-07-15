@@ -5,6 +5,23 @@ import subprocess
 from signdata.datasets._ingestion import media as ingestion_media
 
 
+def test_get_video_fps_releases_failed_capture(monkeypatch):
+    class Capture:
+        released = False
+
+        def isOpened(self):
+            return False
+
+        def release(self):
+            self.released = True
+
+    capture = Capture()
+    monkeypatch.setattr(ingestion_media.cv2, "VideoCapture", lambda _: capture)
+
+    assert ingestion_media.get_video_fps("missing.mp4") == 0.0
+    assert capture.released
+
+
 class TestMaterializeFramesToVideo:
     def test_merges_multiple_patterns_into_one_ordered_frame_list(
         self, tmp_path, monkeypatch

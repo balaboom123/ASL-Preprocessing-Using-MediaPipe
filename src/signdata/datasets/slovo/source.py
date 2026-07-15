@@ -2,10 +2,10 @@
 
 import logging
 from pathlib import Path
-from typing import List, Literal
+from typing import Literal
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from .._ingestion.availability import AvailabilityPolicy
 
@@ -41,7 +41,9 @@ class SlovoSourceConfig(BaseModel):
     class_map_file: str = ""
     class_map_mode: Literal["derive", "bundled", "none"] = "derive"
     include_background: bool = True
-    background_labels: List[str] = ["no_event"]
+    background_labels: list[str] = Field(
+        default_factory=lambda: ["no_event"]
+    )
 
 
 def get_source_config(config) -> SlovoSourceConfig:

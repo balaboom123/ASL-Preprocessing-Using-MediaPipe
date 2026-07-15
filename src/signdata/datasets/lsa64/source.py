@@ -1,11 +1,12 @@
 """LSA64 source config, path resolution, and release validation."""
 
 import logging
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List, Literal, Optional, get_args
+from typing import Literal, get_args
 
 import pandas as pd
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from .._ingestion.availability import AvailabilityPolicy
 from .._ingestion.classmap import load_class_map
@@ -22,13 +23,17 @@ _KNOWN_VARIANTS = frozenset(get_args(LSA64Variant))
 class LSA64SourceConfig(BaseModel):
     """Typed config for LSA64 adapter."""
 
+    model_config = ConfigDict(extra="forbid")
+
     release_dir: str = ""
     variant: LSA64Variant = "cut"
     split: Literal["all", "train", "val", "test"] = "all"
     split_strategy: Literal["none", "community_signer_8_1_1"] = "none"
-    train_signers: List[int] = [1, 2, 3, 4, 5, 6, 7, 8]
-    val_signers: List[int] = [9]
-    test_signers: List[int] = [10]
+    train_signers: list[int] = Field(
+        default_factory=lambda: list(range(1, 9))
+    )
+    val_signers: list[int] = Field(default_factory=lambda: [9])
+    test_signers: list[int] = Field(default_factory=lambda: [10])
     class_map_file: str = ""
     availability_policy: AvailabilityPolicy = "fail_fast"
     allow_missing_class_map: bool = False
@@ -41,12 +46,12 @@ def get_source_config(config) -> LSA64SourceConfig:
     return LSA64SourceConfig(**source_dict)
 
 
-def resolve_release_dir(config, source: LSA64SourceConfig) -> Optional[Path]:
+def resolve_release_dir(config, source: LSA64SourceConfig) -> Path | None:
     raw = source.release_dir or (config.paths.videos or "")
     return Path(raw) if str(raw).strip() else None
 
 
-def infer_variant_from_path(path: Path) -> Optional[str]:
+def infer_variant_from_path(path: Path) -> str | None:
     name = path.name.lower()
     return name if name in _KNOWN_VARIANTS else None
 
@@ -66,7 +71,7 @@ def validate_variant_path_consistency(config, source: LSA64SourceConfig) -> None
         )
 
 
-def resolve_video_dir(config, source: LSA64SourceConfig) -> Optional[Path]:
+def resolve_video_dir(config, source: LSA64SourceConfig) -> Path | None:
     release_dir = resolve_release_dir(config, source)
     if release_dir is None:
         return release_dir
@@ -82,7 +87,7 @@ def resolve_video_dir(config, source: LSA64SourceConfig) -> Optional[Path]:
     return release_dir
 
 
-def _pick_unique_variant(values: Iterable[str], source_label: str) -> Optional[str]:
+def _pick_unique_variant(values: Iterable[str], source_label: str) -> str | None:
     cleaned = {v for v in (str(x).strip().lower() for x in values) if v}
     if not cleaned:
         return None
@@ -93,7 +98,7 @@ def _pick_unique_variant(values: Iterable[str], source_label: str) -> Optional[s
     return next(iter(cleaned))
 
 
-def infer_manifest_variant(df: pd.DataFrame) -> Optional[str]:
+def infer_manifest_variant(df: pd.DataFrame) -> str | None:
     """Infer which LSA64 variant an existing manifest was built from."""
     if "SOURCE_VARIANT" in df.columns:
         raw_values = df["SOURCE_VARIANT"].dropna().astype(str).str.strip().str.lower()
@@ -143,7 +148,7 @@ def validate_loaded_manifest_variant(
 
 def validate_release(
     source: LSA64SourceConfig,
-    video_dir: Optional[Path],
+    video_dir: Path | None,
     log: logging.Logger,
 ) -> dict:
     """Validate LSA64 release directory. Returns stats dict."""
@@ -183,7 +188,7 @@ def validate_release(
 def load_lsa64_class_map(
     source: LSA64SourceConfig,
     log: logging.Logger,
-) -> Optional[pd.DataFrame]:
+) -> pd.DataFrame | None:
     """Load class map from source config or bundled asset.
 
     Returns None when the class map is not found and

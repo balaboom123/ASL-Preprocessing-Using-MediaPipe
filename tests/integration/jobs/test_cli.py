@@ -18,8 +18,8 @@ class TestParseArgs:
         assert args.override == ["a=1", "b=2"]
 
     def test_missing_subcommand(self):
-        args = parse_args([])
-        assert args.command is None
+        with pytest.raises(SystemExit):
+            parse_args([])
 
     def test_run_override_empty_list(self):
         args = parse_args(["run", "my.yaml", "--override"])

@@ -1,9 +1,8 @@
 """WLASL manifest building."""
 
 import json
-import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -13,7 +12,7 @@ from ...utils.manifest import find_video_file, write_manifest
 from .source import WLASLSourceConfig, iter_filtered_instances
 
 
-def build(config, source: WLASLSourceConfig, log: logging.Logger) -> pd.DataFrame:
+def build(config, source: WLASLSourceConfig) -> pd.DataFrame:
     """Build canonical manifest from WLASL_v0.3.json."""
     manifest_path = config.paths.manifest
     video_dir = config.paths.videos
@@ -37,14 +36,6 @@ def build(config, source: WLASLSourceConfig, log: logging.Logger) -> pd.DataFram
 
     df = pd.DataFrame(records)
 
-    if source.subset > 0:
-        df = df[df["CLASS_ID"] < source.subset].reset_index(drop=True)
-        log.info("Subset WLASL-%d applied: %d rows remaining.", source.subset, len(df))
-
-    if source.split != "all":
-        df = df[df["SPLIT"] == source.split].reset_index(drop=True)
-        log.info("Split filter '%s' applied: %d rows remaining.", source.split, len(df))
-
     if video_dir and Path(video_dir).is_dir():
         df = apply_availability_policy(df, video_dir, source.availability_policy)
 
@@ -53,10 +44,10 @@ def build(config, source: WLASLSourceConfig, log: logging.Logger) -> pd.DataFram
 
 
 def _flatten_instances(
-    entries: List[Dict],
-    video_dir: Optional[str],
+    entries: list[dict],
+    video_dir: str | None,
     source: WLASLSourceConfig,
-) -> List[Dict]:
+) -> list[dict]:
     records = []
     use_preprocessed_timing = source.download_mode == "validate"
 
@@ -106,21 +97,21 @@ def _flatten_instances(
     return records
 
 
-def _resolve_rel_path(video_id: str, sample_id: str, video_dir: Optional[str]) -> str:
+def _resolve_rel_path(video_id: str, sample_id: str, video_dir: str | None) -> str:
     stem = video_id or sample_id
     if video_dir:
         return find_video_file(video_dir, stem).name
     return f"{stem}.mp4"
 
 
-def _coerce_int(value: Any) -> Optional[int]:
+def _coerce_int(value: Any) -> int | None:
     try:
         return int(value) if value not in (None, "") else None
     except (TypeError, ValueError):
         return None
 
 
-def _coerce_float(value: Any, default: Optional[float] = None) -> Optional[float]:
+def _coerce_float(value: Any, default: float | None = None) -> float | None:
     try:
         return float(value) if value not in (None, "") else default
     except (TypeError, ValueError):
@@ -132,26 +123,19 @@ def _resolve_timing(
     fps: float,
     frame_start: Any,
     frame_end: Any,
-    video_dir: Optional[str],
+    video_dir: str | None,
     use_preprocessed_timing: bool,
-) -> tuple:
-    clip_duration = _get_clip_duration(video_id, video_dir)
-    if use_preprocessed_timing:
-        if clip_duration > 0:
-            return 0.0, clip_duration
-
-        clip_duration = _estimate_clip_duration(frame_start, frame_end, fps)
-        if clip_duration is not None:
-            return 0.0, clip_duration
-
-        return 0.0, 0.0
-
+) -> tuple[float, float]:
     source_timing = _estimate_source_timing(frame_start, frame_end, fps)
-    if source_timing is not None:
+    if not use_preprocessed_timing and source_timing is not None:
         return source_timing
 
+    clip_duration = _get_clip_duration(video_id, video_dir)
     if clip_duration > 0:
         return 0.0, clip_duration
+
+    if use_preprocessed_timing and source_timing is not None:
+        return 0.0, (float(frame_end) - float(frame_start)) / fps
 
     return 0.0, 0.0
 
@@ -160,7 +144,7 @@ def _estimate_source_timing(
     frame_start: Any,
     frame_end: Any,
     fps: float,
-) -> Optional[tuple[float, float]]:
+) -> tuple[float, float] | None:
     if frame_start is None or frame_end is None or fps <= 0:
         return None
 
@@ -176,27 +160,7 @@ def _estimate_source_timing(
     return start / fps, end / fps
 
 
-def _estimate_clip_duration(
-    frame_start: Any,
-    frame_end: Any,
-    fps: float,
-) -> Optional[float]:
-    if frame_start is None or frame_end is None or fps <= 0:
-        return None
-
-    try:
-        start = float(frame_start)
-        end = float(frame_end)
-    except (TypeError, ValueError):
-        return None
-
-    if start < 0 or end <= start:
-        return None
-
-    return (end - start) / fps
-
-
-def _get_clip_duration(video_id: str, video_dir: Optional[str]) -> float:
+def _get_clip_duration(video_id: str, video_dir: str | None) -> float:
     if not video_id or not video_dir:
         return 0.0
 

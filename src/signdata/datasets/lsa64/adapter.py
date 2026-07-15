@@ -64,8 +64,7 @@ class LSA64Dataset(DatasetAdapter):
         video_dir = _source.resolve_video_dir(config, source)
         context.videos_dir = video_dir
         df = _manifest.build(config, source, video_dir, self.logger)
-        context.manifest_path = Path(config.paths.manifest)
-        context.manifest_df = df
+        self._set_manifest(context, config.paths.manifest, df)
         context.stats["dataset.manifest"] = {
             "videos": int(df["VIDEO_ID"].nunique()),
             "segments": len(df),

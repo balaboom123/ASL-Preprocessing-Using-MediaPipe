@@ -1,36 +1,40 @@
 """Pydantic configuration models."""
 
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
 # --- Detection configs (one per backend, no `type` field) ---
 
-class YOLODetectionConfig(BaseModel):
+class YOLODetectionConfig(StrictModel):
     model: str = "yolo11m.pt"
     device: str = "cpu"
     confidence_threshold: float = 0.5
     min_bbox_area: float = 0.05
     batch_size: int = Field(default=16, gt=0)
     allow_download: bool = True
-    weights_dir: Optional[str] = None
+    weights_dir: str | None = None
 
 
-class MMDetDetectionConfig(BaseModel):
+class MMDetDetectionConfig(StrictModel):
     det_model_config: str
     det_model_checkpoint: str
     device: str = "cuda:0"
     batch_size: int = Field(default=16, gt=0)
 
 
-class MediaPipeDetectionConfig(BaseModel):
+class MediaPipeDetectionConfig(StrictModel):
     min_detection_confidence: float = 0.5
 
 
 # --- Pose configs (one per backend, no `type` field) ---
 
-class MediaPipePoseConfig(BaseModel):
+class MediaPipePoseConfig(StrictModel):
     model_complexity: int = 1
     min_detection_confidence: float = 0.5
     min_tracking_confidence: float = 0.5
@@ -38,7 +42,7 @@ class MediaPipePoseConfig(BaseModel):
     batch_size: int = 16
 
 
-class MMPosePoseConfig(BaseModel):
+class MMPosePoseConfig(StrictModel):
     pose_model_config: str
     pose_model_checkpoint: str
     device: str = "cuda:0"
@@ -62,15 +66,13 @@ POSE_CONFIG_MAP = {
 
 # --- Video processing config ---
 
-class VideoProcessingConfig(BaseModel):
+class VideoProcessingConfig(StrictModel):
     codec: str = "libx264"
     padding: float = 0.0
-    resize: Optional[List[int]] = None
+    resize: list[int] | None = None
 
 
-class PartsProcessingConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+class PartsProcessingConfig(StrictModel):
     crop_size: int = Field(default=224, gt=0)
     bbox_scale: float = Field(default=1.2, gt=0)
     codec: str = "mp4v"
@@ -79,14 +81,14 @@ class PartsProcessingConfig(BaseModel):
 
 # --- Stage configs ---
 
-class DatasetConfig(BaseModel):
+class DatasetConfig(StrictModel):
     name: str
     download: bool = True
     manifest: bool = True
-    source: Dict[str, Any] = {}
+    source: dict[str, Any] = Field(default_factory=dict)
 
 
-class ProcessingConfig(BaseModel):
+class ProcessingConfig(StrictModel):
     enabled: bool = True
     processor: Literal[
         "video2pose",
@@ -95,23 +97,24 @@ class ProcessingConfig(BaseModel):
         "video2parts",
     ] = "video2pose"
     detection: Literal["yolo", "mediapipe", "mmdet", "null"] = "null"
-    pose: Optional[Literal["mediapipe", "mmpose"]] = None
+    pose: Literal["mediapipe", "mmpose"] | None = None
 
     # Shared sampling param: native / ratio / absolute FPS
-    sample_rate: Optional[float] = 0.5
-    max_workers: int = 1
+    sample_rate: float | None = 0.5
+    max_workers: int = Field(default=1, gt=0)
 
     # Backend-specific configs — raw dicts from YAML, validated into typed
     # models by model_validator and stored back as public attributes.
-    detection_config: Optional[Union[
-        YOLODetectionConfig, MMDetDetectionConfig,
-        MediaPipeDetectionConfig, dict,
-    ]] = None
-    pose_config: Optional[Union[
-        MediaPipePoseConfig, MMPosePoseConfig, dict,
-    ]] = None
-    video_config: Optional[VideoProcessingConfig] = None
-    parts_config: Optional[Union[PartsProcessingConfig, dict]] = None
+    detection_config: (
+        YOLODetectionConfig
+        | MMDetDetectionConfig
+        | MediaPipeDetectionConfig
+        | dict
+        | None
+    ) = None
+    pose_config: MediaPipePoseConfig | MMPosePoseConfig | dict | None = None
+    video_config: VideoProcessingConfig | None = None
+    parts_config: PartsProcessingConfig | dict | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -127,7 +130,7 @@ class ProcessingConfig(BaseModel):
 
     @field_validator("sample_rate")
     @classmethod
-    def validate_sample_rate(cls, v: Optional[float]) -> Optional[float]:
+    def validate_sample_rate(cls, v: float | None) -> float | None:
         if v is not None and v <= 0:
             raise ValueError("sample_rate must be positive or null")
         return v
@@ -177,12 +180,12 @@ class ProcessingConfig(BaseModel):
         return self
 
 
-class NormalizeConfig(BaseModel):
+class NormalizeConfig(StrictModel):
     mode: Literal["isotropic_3d", "xy_isotropic_z_minmax"] = "xy_isotropic_z_minmax"
     remove_z: bool = False
     select_keypoints: bool = True
-    keypoint_preset: Optional[str] = None
-    keypoint_indices: Optional[List[int]] = None
+    keypoint_preset: str | None = None
+    keypoint_indices: list[int] | None = None
     mask_empty_frames: bool = True
     mask_low_confidence: bool = False
     visibility_threshold: float = 0.3
@@ -190,7 +193,7 @@ class NormalizeConfig(BaseModel):
 
     @field_validator("keypoint_preset")
     @classmethod
-    def validate_keypoint_preset(cls, v: Optional[str]) -> Optional[str]:
+    def validate_keypoint_preset(cls, v: str | None) -> str | None:
         if v is not None:
             from signdata.processors.pose import KEYPOINT_PRESETS
             if v not in KEYPOINT_PRESETS:
@@ -201,17 +204,18 @@ class NormalizeConfig(BaseModel):
         return v
 
 
-class PostProcessingConfig(BaseModel):
+class PostProcessingConfig(StrictModel):
     enabled: bool = False
-    normalize: Optional[NormalizeConfig] = None
+    normalize: NormalizeConfig | None = None
 
 
-class OutputConfig(BaseModel):
+class OutputConfig(StrictModel):
     enabled: bool = True
-    config: Dict[str, Any] = {}
+    max_shard_count: int = Field(default=10_000, gt=0)
+    max_shard_size: int | None = Field(default=None, gt=0)
 
 
-class PathsConfig(BaseModel):
+class PathsConfig(StrictModel):
     root: str = ""
     videos: str = ""
     transcripts: str = ""
@@ -222,10 +226,14 @@ class PathsConfig(BaseModel):
 
 # --- Top-level ---
 
-class Config(BaseModel):
+class Config(StrictModel):
     dataset: DatasetConfig
-    processing: ProcessingConfig = ProcessingConfig(enabled=False)
-    post_processing: PostProcessingConfig = PostProcessingConfig()
-    output: OutputConfig = OutputConfig()
+    processing: ProcessingConfig = Field(
+        default_factory=lambda: ProcessingConfig(enabled=False)
+    )
+    post_processing: PostProcessingConfig = Field(
+        default_factory=PostProcessingConfig
+    )
+    output: OutputConfig = Field(default_factory=OutputConfig)
     run_name: str = "default"
-    paths: PathsConfig = PathsConfig()
+    paths: PathsConfig = Field(default_factory=PathsConfig)
