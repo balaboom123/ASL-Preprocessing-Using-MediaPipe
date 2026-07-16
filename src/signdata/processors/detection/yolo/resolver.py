@@ -27,7 +27,6 @@ VALID_ALIASES: set[str] = {
 _HTTP_SCHEMES = {"http", "https"}
 _TRITON_SCHEMES = _HTTP_SCHEMES | {"grpc"}
 _TYPO_RE = re.compile(r"^yolov(\d+)([a-z])\.pt$")
-_FAMILY_RE = re.compile(r"^(yolov?\d+)[a-z]\.pt$")
 
 
 def _normalize_stem(model: str) -> str:
@@ -44,27 +43,6 @@ def _hub_web_root() -> str:
         return HUB_WEB_ROOT
     except Exception:
         return "https://hub.ultralytics.com"
-
-
-def _is_hub_model(model: str) -> bool:
-    return model.startswith(f"{_hub_web_root()}/models/")
-
-
-def _is_remote_weights_url(model: str) -> bool:
-    url = urlsplit(model)
-    if url.scheme not in _HTTP_SCHEMES:
-        return False
-    return url.path.endswith((".pt", ".pth"))
-
-
-def _is_triton_model(model: str) -> bool:
-    # Triton endpoints follow the /v2/models/<name> KServe v2 API path, so
-    # match on that rather than a bare scheme+netloc which would also match
-    # plain weights URLs.
-    url = urlsplit(model)
-    if url.scheme not in _TRITON_SCHEMES:
-        return False
-    return bool(url.netloc) and "/v2/models/" in url.path
 
 
 def _suggest_correction(model: str) -> Optional[tuple[str, str]]:
@@ -105,11 +83,6 @@ def _get_ultralytics_version() -> Optional[str]:
         return __version__
     except Exception:
         return None
-
-
-def _family_of(alias: str) -> Optional[str]:
-    m = _FAMILY_RE.match(alias)
-    return m.group(1) if m else None
 
 
 def _check_installed_alias_support(alias: str) -> None:
@@ -171,7 +144,8 @@ def resolve_yolo_model(
         logger.info("YOLO model resolved to local file: %s", local_path)
         return str(local_path)
 
-    if _is_hub_model(model):
+    url = urlsplit(model)
+    if model.startswith(f"{_hub_web_root()}/models/"):
         if not allow_download:
             raise FileNotFoundError(
                 f"YOLO model {model!r} is a remote Ultralytics HUB reference. "
@@ -179,10 +153,14 @@ def resolve_yolo_model(
             )
         return model
 
-    if _is_triton_model(model):
+    if (
+        url.scheme in _TRITON_SCHEMES
+        and url.netloc
+        and "/v2/models/" in url.path
+    ):
         return model
 
-    if _is_remote_weights_url(model):
+    if url.scheme in _HTTP_SCHEMES and url.path.endswith((".pt", ".pth")):
         if not allow_download:
             raise FileNotFoundError(
                 f"YOLO model {model!r} is a remote weights URL. "
@@ -201,7 +179,7 @@ def resolve_yolo_model(
     suggestion = _suggest_correction(normalised)
     if suggestion:
         corrected, typo_family = suggestion
-        official_family = _family_of(corrected)
+        official_family = corrected.removesuffix(".pt")[:-1]
         raise ValueError(
             f"Unknown YOLO model {model!r}. Did you mean {corrected!r}? "
             f"{official_family.upper()} uses the naming scheme "

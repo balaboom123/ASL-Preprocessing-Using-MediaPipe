@@ -127,15 +127,15 @@ def resolve_metadata_file(
             raise FileNotFoundError(f"BOBSL metadata_file not found: {metadata_path}")
         return metadata_path
 
-    candidates = _existing_candidates(
+    resolved = _first_existing_path(
         [
             release_dir / "metadata" / "subset2episode.json",
             release_dir / "splits" / "subset2episode.json",
             release_dir / "subset2episode.json",
         ]
     )
-    if candidates:
-        return candidates[0]
+    if resolved is not None:
+        return resolved
 
     matches = sorted(release_dir.rglob("subset2episode.json"))
     if matches:
@@ -235,7 +235,7 @@ def resolve_annotation_path(
             )
         return annotation_path
 
-    candidates = _existing_candidates(
+    resolved = _first_existing_path(
         [
             release_dir / "annotations" / "isolated_signs.csv",
             release_dir / "annotations" / "isolated_signs.tsv",
@@ -246,8 +246,8 @@ def resolve_annotation_path(
             release_dir / "isolated_signs",
         ]
     )
-    if candidates:
-        return candidates[0]
+    if resolved is not None:
+        return resolved
 
     patterns = (
         "*isolated*sign*.csv",
@@ -369,10 +369,6 @@ def _normalize_episode_key(value: Any) -> str:
     if not text:
         return ""
     return Path(text).stem.casefold()
-
-
-def _existing_candidates(candidates: Iterable[Path]) -> list[Path]:
-    return [candidate for candidate in candidates if candidate.exists()]
 
 
 def _first_existing_path(candidates: Iterable[Path]) -> Optional[Path]:

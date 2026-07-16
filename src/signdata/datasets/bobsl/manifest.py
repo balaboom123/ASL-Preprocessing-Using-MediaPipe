@@ -81,7 +81,7 @@ def _build_subtitle_manifest(
     source: BOBSLSourceConfig,
     release_dir: Path,
     split_map: Dict[str, str],
-    video_lookup: Dict[str, List[str]],
+    video_lookup: Dict[str, str],
     log: logging.Logger,
 ) -> pd.DataFrame:
     subtitles_root = resolve_subtitles_root(source, release_dir, log)
@@ -97,13 +97,13 @@ def _build_subtitle_manifest(
 
     rows: List[Dict[str, Any]] = []
     for subtitle_path in subtitle_files:
-        episode = _episode_id_from_path(subtitle_path)
+        episode = subtitle_path.stem
         split_label = resolve_episode_split(
             episode,
             split_map,
             fallback=_infer_split_from_path(subtitles_root, subtitle_path),
         )
-        if not _split_selected(split_label, source.split):
+        if source.split != "all" and split_label != source.split:
             continue
 
         rel_path = _resolve_rel_path(episode, video_lookup)
@@ -139,7 +139,7 @@ def _build_isolated_manifest(
     source: BOBSLSourceConfig,
     release_dir: Path,
     split_map: Dict[str, str],
-    video_lookup: Dict[str, List[str]],
+    video_lookup: Dict[str, str],
     log: logging.Logger,
 ) -> pd.DataFrame:
     annotation_path = resolve_annotation_path(source, release_dir, log)
@@ -164,7 +164,7 @@ def _build_isolated_manifest(
             split_map,
             fallback=_first_value(record, _SPLIT_KEYS, default=""),
         )
-        if not _split_selected(split_label, source.split):
+        if source.split != "all" and split_label != source.split:
             continue
 
         class_id = _coerce_int(_first_value(record, _CLASS_ID_KEYS))
@@ -352,7 +352,7 @@ def _flatten_json_records(raw: Any) -> List[Dict[str, Any]]:
     return []
 
 
-def _index_video_rel_paths(video_dir: str) -> Dict[str, List[str]]:
+def _index_video_rel_paths(video_dir: str) -> Dict[str, str]:
     base_dir = Path(video_dir)
     if not base_dir.is_dir():
         return {}
@@ -369,23 +369,16 @@ def _index_video_rel_paths(video_dir: str) -> Dict[str, List[str]]:
         ),
     )
 
-    rel_paths: Dict[str, List[str]] = {}
+    rel_paths: Dict[str, str] = {}
     for path in files:
         rel_path = path.relative_to(base_dir).as_posix()
-        rel_paths.setdefault(path.stem, []).append(rel_path)
-        rel_paths.setdefault(path.stem.casefold(), []).append(rel_path)
+        rel_paths.setdefault(path.stem, rel_path)
+        rel_paths.setdefault(path.stem.casefold(), rel_path)
     return rel_paths
 
 
-def _resolve_rel_path(episode: str, video_lookup: Dict[str, List[str]]) -> str:
-    matches = video_lookup.get(episode) or video_lookup.get(episode.casefold()) or []
-    if matches:
-        return matches[0]
-    return f"{episode}.mp4"
-
-
-def _split_selected(split_label: str, selected_split: str) -> bool:
-    return selected_split == "all" or split_label == selected_split
+def _resolve_rel_path(episode: str, video_lookup: Dict[str, str]) -> str:
+    return video_lookup.get(episode) or video_lookup.get(episode.casefold()) or f"{episode}.mp4"
 
 
 def _build_sample_id(
@@ -403,10 +396,6 @@ def _build_sample_id(
     if suffix:
         parts.append(str(suffix).replace(" ", "_"))
     return "-".join(parts)
-
-
-def _episode_id_from_path(path: Path) -> str:
-    return path.stem
 
 
 def _infer_split_from_path(root: Path, path: Path) -> str:

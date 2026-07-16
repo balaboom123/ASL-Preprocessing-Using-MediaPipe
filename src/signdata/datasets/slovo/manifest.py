@@ -2,7 +2,6 @@
 
 import logging
 from pathlib import Path
-from typing import List
 
 import pandas as pd
 
@@ -12,9 +11,9 @@ from .._ingestion.media import get_video_duration, get_video_fps
 from ...utils.manifest import write_manifest
 from .source import (
     OPTIONAL_PASSTHROUGH,
-    REQUIRED_COLUMNS,
     SlovoSourceConfig,
     get_bundled_class_map_path,
+    load_annotations,
     parse_train_col,
     resolve_annotations_csv,
     resolve_release_dir,
@@ -23,23 +22,13 @@ from .source import (
 
 def build(config, source: SlovoSourceConfig, log: logging.Logger) -> pd.DataFrame:
     """Build the canonical manifest from SLoVo annotations.csv."""
-    manifest_path = config.paths.manifest
-
     video_dir = resolve_release_dir(source, config)
     annotations_csv = resolve_annotations_csv(source, video_dir)
 
-    ann = pd.read_csv(annotations_csv)
-
-    missing_cols = REQUIRED_COLUMNS - set(ann.columns)
-    if missing_cols:
-        raise ValueError(
-            f"SLoVo annotations.csv is missing required columns: "
-            f"{sorted(missing_cols)}. "
-            f"Available columns: {list(ann.columns)}"
-        )
-
-    ann["_is_train"] = ann["train"].apply(parse_train_col)
-    ann["_split"] = ann["_is_train"].map({True: "train", False: "test"})
+    ann = load_annotations(annotations_csv)
+    ann["_split"] = ann["train"].apply(parse_train_col).map(
+        {True: "train", False: "test"}
+    )
 
     if source.split != "all":
         before = len(ann)
@@ -57,11 +46,12 @@ def build(config, source: SlovoSourceConfig, log: logging.Logger) -> pd.DataFram
             source.background_labels, before, len(ann),
         )
 
-    durations: List[float] = []
-    fps_values: List[float] = []
-    rel_paths: List[str] = []
+    durations: list[float] = []
+    fps_values: list[float] = []
+    rel_paths: list[str] = []
 
-    for attachment_id in ann["attachment_id"].astype(str):
+    attachment_ids = ann["attachment_id"].astype(str)
+    for attachment_id in attachment_ids:
         rel_path = f"{attachment_id}.mp4"
         video_path = str(Path(video_dir) / rel_path)
         durations.append(get_video_duration(video_path))
@@ -69,8 +59,8 @@ def build(config, source: SlovoSourceConfig, log: logging.Logger) -> pd.DataFram
         rel_paths.append(rel_path)
 
     df = pd.DataFrame({
-        "SAMPLE_ID": ann["attachment_id"].astype(str),
-        "VIDEO_ID": ann["attachment_id"].astype(str),
+        "SAMPLE_ID": attachment_ids,
+        "VIDEO_ID": attachment_ids,
         "REL_PATH": rel_paths,
         "SPLIT": ann["_split"],
         "START": 0.0,
@@ -94,7 +84,7 @@ def build(config, source: SlovoSourceConfig, log: logging.Logger) -> pd.DataFram
         policy=source.availability_policy,
     )
 
-    write_manifest(df, manifest_path)
+    write_manifest(df, config.paths.manifest)
     return df
 
 
@@ -126,8 +116,8 @@ def _apply_class_map(
                 unmatched,
             )
 
-    elif source.class_map_mode == "derive":
-        unique_labels = sorted(ann["text"].dropna().unique().tolist())
+    else:
+        unique_labels = sorted(ann["text"].dropna().unique())
         label_to_id = {label: idx for idx, label in enumerate(unique_labels)}
         df = df.copy()
         df["CLASS_ID"] = df["GLOSS"].map(label_to_id)

@@ -2,7 +2,6 @@
 
 import logging
 from pathlib import Path
-from typing import List, Optional
 
 import pandas as pd
 
@@ -28,7 +27,6 @@ def build(
     """Build a canonical TSV manifest from PHOENIX corpus CSV files."""
     release_dir = Path(source.release_dir)
     video_dir = Path(config.paths.videos) if config.paths.videos else release_dir
-    manifest_path = config.paths.manifest
 
     if not release_dir.exists():
         raise FileNotFoundError(
@@ -36,7 +34,7 @@ def build(
         )
 
     splits = ALL_SPLITS if source.split == "all" else (source.split,)
-    split_frames: List[pd.DataFrame] = []
+    split_frames: list[pd.DataFrame] = []
 
     for split in splits:
         csv_paths = find_corpus_csvs(release_dir, split)
@@ -48,7 +46,7 @@ def build(
             continue
         for csv_path in csv_paths:
             split_df = _load_split_df(csv_path, split, source.video_fps)
-            if split_df is not None and len(split_df) > 0:
+            if split_df is not None and not split_df.empty:
                 split_frames.append(split_df)
                 log.info(
                     "Loaded %d rows for split '%s' from %s",
@@ -70,7 +68,7 @@ def build(
         rel_path_col="REL_PATH",
     )
 
-    write_manifest(df, manifest_path)
+    write_manifest(df, config.paths.manifest)
     return df
 
 
@@ -78,7 +76,7 @@ def _load_split_df(
     csv_path: Path,
     split: str,
     video_fps: float,
-) -> Optional[pd.DataFrame]:
+) -> pd.DataFrame | None:
     """Parse a single corpus CSV and return a canonical DataFrame."""
     try:
         raw = pd.read_csv(csv_path, delimiter="|")

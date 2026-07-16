@@ -3,22 +3,21 @@
 import logging
 import re
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
 from .._ingestion.availability import AvailabilityPolicy
 
 # Modality suffix appended to the base sample key in filenames.
-MODALITY_SUFFIX: Dict[str, str] = {
+MODALITY_SUFFIX: dict[str, str] = {
     "rgb": "_color",
     "depth": "_depth",
 }
 
 # Known filesystem aliases for split directory names.
-SPLIT_ALIASES: Dict[str, List[str]] = {
+SPLIT_ALIASES: dict[str, list[str]] = {
     "val": ["validation"],
-    "validation": ["val"],
 }
 
 LABEL_OVERRIDE_FIELDS = {
@@ -86,35 +85,32 @@ def discover_split_dir(release_root: Path, split: str) -> Path:
     )
 
 
-def discover_class_id_file(release_root: Path) -> Optional[Path]:
+def discover_class_id_file(release_root: Path) -> Path | None:
     """Search *release_root* recursively for a class correspondence CSV."""
     for pattern in ("SignList*.csv", "classId*.csv", "class_id*.csv",
                     "*class*correspondence*.csv", "*sign_list*.csv"):
-        matches = list(release_root.rglob(pattern))
-        if matches:
-            return matches[0]
+        for match in release_root.rglob(pattern):
+            return match
     return None
 
 
-def discover_labels_file(release_root: Path, split: str) -> Optional[Path]:
+def discover_labels_file(release_root: Path, split: str) -> Path | None:
     """Search *release_root* for the labels file for *split*."""
-    candidates = []
     for split_name in [split] + SPLIT_ALIASES.get(split, []):
-        candidates.extend([
+        for path in (
             release_root / f"{split_name}_labels.csv",
             release_root / f"{split_name}" / f"{split_name}_labels.csv",
             release_root / "labels" / f"{split_name}_labels.csv",
-        ])
-    for path in candidates:
-        if path.exists():
-            return path
+        ):
+            if path.exists():
+                return path
     return None
 
 
 def resolve_class_id_file(
     source: AUTSLSourceConfig,
     release_root: Path,
-) -> Optional[Path]:
+) -> Path | None:
     if source.class_id_file:
         return Path(source.class_id_file)
     return discover_class_id_file(release_root)
@@ -124,7 +120,7 @@ def resolve_labels_file(
     split: str,
     source: AUTSLSourceConfig,
     release_root: Path,
-) -> Optional[Path]:
+) -> Path | None:
     field_name = LABEL_OVERRIDE_FIELDS.get(split)
     explicit = getattr(source, field_name, "") if field_name else ""
     if explicit:
@@ -152,7 +148,7 @@ def validate(
         )
 
     selected_splits = get_selected_splits(source)
-    resolved_split_dirs: Dict[str, str] = {}
+    resolved_split_dirs: dict[str, str] = {}
     for split_name in selected_splits:
         split_dir = discover_split_dir(release_root, split_name)
         resolved_split_dirs[split_name] = split_dir.name
@@ -180,7 +176,7 @@ def validate(
     return {
         "validated": True,
         "release_root": str(release_root),
-        "splits": dict(resolved_split_dirs),
+        "splits": resolved_split_dirs,
         "modality": source.modality,
         "class_id_file": str(class_id_path),
     }

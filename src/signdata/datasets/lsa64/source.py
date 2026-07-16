@@ -12,7 +12,7 @@ from .._ingestion.availability import AvailabilityPolicy
 from .._ingestion.classmap import load_class_map
 
 _BUNDLED_CLASS_MAP = (
-    Path(__file__).parent.parent.parent.parent.parent / "assets" / "lsa64_class_map.tsv"
+    Path(__file__).parents[4] / "assets" / "lsa64_class_map.tsv"
 )
 
 DEFAULT_FPS = 60.0
@@ -73,18 +73,11 @@ def validate_variant_path_consistency(config, source: LSA64SourceConfig) -> None
 
 def resolve_video_dir(config, source: LSA64SourceConfig) -> Path | None:
     release_dir = resolve_release_dir(config, source)
-    if release_dir is None:
-        return release_dir
-
-    explicit_variant = infer_variant_from_path(release_dir)
-    if explicit_variant:
+    if release_dir is None or infer_variant_from_path(release_dir):
         return release_dir
 
     variant_dir = release_dir / source.variant
-    if variant_dir.is_dir():
-        return variant_dir
-
-    return release_dir
+    return variant_dir if variant_dir.is_dir() else release_dir
 
 
 def _pick_unique_variant(values: Iterable[str], source_label: str) -> str | None:

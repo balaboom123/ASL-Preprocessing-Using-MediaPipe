@@ -1,7 +1,7 @@
 """AUTSL dataset adapter."""
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from ..base import DatasetAdapter
 from ...registry import register_dataset
@@ -16,7 +16,7 @@ class AUTSLDataset(DatasetAdapter):
     name = "autsl"
 
     @classmethod
-    def validate_raw_inputs(cls, raw: Dict[str, Any]) -> None:
+    def validate_raw_inputs(cls, raw: dict[str, Any]) -> None:
         dataset_dict = raw.get("dataset") if isinstance(raw.get("dataset"), dict) else {}
         source_dict = dataset_dict.get("source") if isinstance(dataset_dict.get("source"), dict) else {}
         paths_dict = raw.get("paths") if isinstance(raw.get("paths"), dict) else {}
@@ -32,11 +32,12 @@ class AUTSLDataset(DatasetAdapter):
     @classmethod
     def validate_config(cls, config) -> None:
         source = _source.get_source_config(config)
-        if not (source.release_dir or config.paths.videos):
+        if not source.release_dir:
             raise ValueError(
                 "autsl requires dataset.source.release_dir or paths.videos "
                 "pointing to the local AUTSL release directory."
             )
+
     def get_source_config(self, config) -> _source.AUTSLSourceConfig:
         return _source.get_source_config(config)
 

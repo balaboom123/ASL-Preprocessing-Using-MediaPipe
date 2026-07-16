@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import List, Literal, Tuple
+from typing import Literal
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -34,10 +34,9 @@ def get_source_config(config) -> RWTHPhoenixWeatherSourceConfig:
     return RWTHPhoenixWeatherSourceConfig(**source_dict)
 
 
-def find_corpus_csvs(release_dir: Path, split: str) -> List[Path]:
+def find_corpus_csvs(release_dir: Path, split: str) -> list[Path]:
     """Locate PHOENIX corpus CSV files for *split* under *release_dir*."""
-    pattern = f"PHOENIX-2014-T.{split}.corpus.csv"
-    return sorted(release_dir.rglob(pattern))
+    return sorted(release_dir.rglob(f"PHOENIX-2014-T.{split}.corpus.csv"))
 
 
 def derive_clip_id(name: str) -> str:
@@ -90,7 +89,6 @@ def _resolve_frame_dir(
 ) -> Path:
     """Resolve a frame directory from either plan-style or official PHOENIX metadata."""
     normalized = _normalise_frame_path(path_value).lstrip("/")
-    candidates: list[Path] = []
 
     for anchor in _iter_release_anchors(csv_path, release_dir):
         for base_dir in (
@@ -100,12 +98,10 @@ def _resolve_frame_dir(
             anchor / "features" / "fullFrame-210x260px" / split,
         ):
             candidate = base_dir / normalized if normalized else base_dir
-            if candidate not in candidates:
-                candidates.append(candidate)
             if candidate.is_dir():
                 return candidate
 
-    return candidates[0] if candidates else release_dir / normalized
+    return release_dir / normalized
 
 
 def prepare(
@@ -180,7 +176,7 @@ def _materialise_split(
     fps: float,
     overwrite: bool,
     log: logging.Logger,
-) -> Tuple[int, int, int]:
+) -> tuple[int, int, int]:
     """Materialise videos for a single corpus CSV.
 
     Returns (materialized_count, error_count, validated_count).
@@ -207,16 +203,18 @@ def _materialise_split(
     for _, row in df.iterrows():
         raw_id = str(row[id_col])
         clip_id = derive_clip_id(raw_id)
-        raw_folder = raw_id
-        if folder_col and pd.notna(row[folder_col]):
-            raw_folder = str(row[folder_col])
-        frame_dir = _resolve_frame_dir(csv_path, release_dir, split, raw_folder)
         output_path = video_dir / split / f"{clip_id}.mp4"
 
         if output_path.exists() and not overwrite:
             validated += 1
             continue
 
+        raw_folder = (
+            str(row[folder_col])
+            if folder_col and pd.notna(row[folder_col])
+            else raw_id
+        )
+        frame_dir = _resolve_frame_dir(csv_path, release_dir, split, raw_folder)
         if not frame_dir.is_dir():
             log.debug(
                 "Frame directory not found, skipping clip '%s': %s",

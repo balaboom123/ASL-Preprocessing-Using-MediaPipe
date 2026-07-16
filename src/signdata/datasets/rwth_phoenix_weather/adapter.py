@@ -22,6 +22,7 @@ class RWTHPhoenixWeatherDataset(DatasetAdapter):
                 "dataset.source.release_dir or paths.videos pointing to the "
                 "unpacked PHOENIX release directory."
             )
+
     def get_source_config(self, config) -> _source.RWTHPhoenixWeatherSourceConfig:
         return _source.get_source_config(config)
 
@@ -38,7 +39,7 @@ class RWTHPhoenixWeatherDataset(DatasetAdapter):
         context.stats["dataset.manifest"] = {
             "videos": int(df["VIDEO_ID"].nunique()),
             "segments": len(df),
-            "splits": list(df["SPLIT"].unique()) if "SPLIT" in df.columns else [],
+            "splits": list(df["SPLIT"].unique()),
         }
         self.logger.info(
             "PHOENIX manifest built: %d segments, %d videos -> %s",

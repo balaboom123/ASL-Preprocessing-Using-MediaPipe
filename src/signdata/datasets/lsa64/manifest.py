@@ -2,7 +2,6 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
@@ -20,8 +19,8 @@ from .source import (
 def build(
     config,
     source: LSA64SourceConfig,
-    video_dir: Optional[Path] = None,
-    log: Optional[logging.Logger] = None,
+    video_dir: Path | None = None,
+    log: logging.Logger | None = None,
 ) -> pd.DataFrame:
     """Discover .mp4 files, parse filenames, join class map, write TSV manifest."""
     if log is None:
@@ -136,8 +135,7 @@ def build(
     extra = [c for c in df.columns if c not in ordered]
     df = df[ordered + extra]
 
-    manifest_path = config.paths.manifest
-    write_manifest(df, manifest_path)
+    write_manifest(df, config.paths.manifest)
     return df
 
 

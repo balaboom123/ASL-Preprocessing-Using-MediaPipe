@@ -1,7 +1,7 @@
 """LSA64 dataset adapter."""
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from ..base import DatasetAdapter
 from ...registry import register_dataset
@@ -17,11 +17,17 @@ class LSA64Dataset(DatasetAdapter):
 
     @classmethod
     def _get_validated_source_config(cls, config) -> _source.LSA64SourceConfig:
-        cls.validate_config(config)
-        return _source.get_source_config(config)
+        source = _source.get_source_config(config)
+        if _source.resolve_release_dir(config, source) is None:
+            raise ValueError(
+                "lsa64 requires dataset.source.release_dir or paths.videos "
+                "pointing to the local LSA64 release directory."
+            )
+        _source.validate_variant_path_consistency(config, source)
+        return source
 
     @classmethod
-    def validate_raw_inputs(cls, raw: Dict[str, Any]) -> None:
+    def validate_raw_inputs(cls, raw: dict[str, Any]) -> None:
         dataset_dict = raw.get("dataset") if isinstance(raw.get("dataset"), dict) else {}
         source_dict = dataset_dict.get("source") if isinstance(dataset_dict.get("source"), dict) else {}
         paths_dict = raw.get("paths") if isinstance(raw.get("paths"), dict) else {}
@@ -36,13 +42,7 @@ class LSA64Dataset(DatasetAdapter):
 
     @classmethod
     def validate_config(cls, config) -> None:
-        source = _source.get_source_config(config)
-        if _source.resolve_release_dir(config, source) is None:
-            raise ValueError(
-                "lsa64 requires dataset.source.release_dir or paths.videos "
-                "pointing to the local LSA64 release directory."
-            )
-        _source.validate_variant_path_consistency(config, source)
+        cls._get_validated_source_config(config)
 
     def get_source_config(self, config) -> _source.LSA64SourceConfig:
         return _source.get_source_config(config)

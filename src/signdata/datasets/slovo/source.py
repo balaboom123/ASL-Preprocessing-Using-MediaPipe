@@ -11,9 +11,7 @@ from .._ingestion.availability import AvailabilityPolicy
 
 # Optional class map path used when class_map_mode="bundled".
 _DEFAULT_CLASS_MAP = (
-    Path(__file__).resolve().parent.parent.parent.parent.parent
-    / "assets"
-    / "slovo_class_map.tsv"
+    Path(__file__).resolve().parents[4] / "assets" / "slovo_class_map.tsv"
 )
 
 # Columns that must be present in annotations.csv
@@ -58,11 +56,18 @@ def resolve_release_dir(source: SlovoSourceConfig, config) -> str:
 
 
 def resolve_annotations_csv(source: SlovoSourceConfig, video_dir: str) -> str:
-    if source.annotations_csv:
-        return source.annotations_csv
-    if video_dir:
-        return str(Path(video_dir) / "annotations.csv")
-    return "annotations.csv"
+    return source.annotations_csv or str(Path(video_dir) / "annotations.csv")
+
+
+def load_annotations(path: str | Path) -> pd.DataFrame:
+    ann = pd.read_csv(path)
+    missing_cols = REQUIRED_COLUMNS - set(ann.columns)
+    if missing_cols:
+        raise ValueError(
+            "SLoVo annotations.csv is missing required columns: "
+            f"{sorted(missing_cols)}. Available columns: {list(ann.columns)}"
+        )
+    return ann
 
 
 def parse_train_col(val) -> bool:
@@ -99,13 +104,7 @@ def validate(source: SlovoSourceConfig, config, log: logging.Logger) -> dict:
             "provide an explicit path via dataset.source.annotations_csv."
         )
 
-    ann = pd.read_csv(annotations_csv)
-    missing_cols = REQUIRED_COLUMNS - set(ann.columns)
-    if missing_cols:
-        raise ValueError(
-            f"SLoVo annotations.csv is missing required columns: "
-            f"{sorted(missing_cols)}. Available columns: {list(ann.columns)}"
-        )
+    ann = load_annotations(annotations_csv)
     row_count = len(ann)
 
     log.info(

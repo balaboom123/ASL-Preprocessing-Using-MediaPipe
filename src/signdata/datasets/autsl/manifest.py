@@ -2,7 +2,6 @@
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -23,9 +22,8 @@ from .source import (
 
 def build(config, source: AUTSLSourceConfig, log: logging.Logger) -> pd.DataFrame:
     """Build canonical manifest from AUTSL release directory."""
-    manifest_path = config.paths.manifest
     release_root = resolve_release_root(source, config)
-    selected_splits = list(get_selected_splits(source))
+    selected_splits = get_selected_splits(source)
 
     class_id_path = resolve_class_id_file(source, release_root)
     if class_id_path is None or not class_id_path.exists():
@@ -38,7 +36,7 @@ def build(config, source: AUTSLSourceConfig, log: logging.Logger) -> pd.DataFram
         header=None,
         names=["CLASS_ID", "GLOSS_TR", "GLOSS_EN"],
     )
-    class_lookup: Dict[int, Tuple[str, str]] = {}
+    class_lookup: dict[int, tuple[str, str]] = {}
     for _, row in class_map.iterrows():
         try:
             cid = int(row["CLASS_ID"])
@@ -48,8 +46,8 @@ def build(config, source: AUTSLSourceConfig, log: logging.Logger) -> pd.DataFram
         gloss_en = str(row["GLOSS_EN"]) if pd.notna(row["GLOSS_EN"]) else gloss_tr
         class_lookup[cid] = (gloss_tr, gloss_en)
 
-    modality_suffix = MODALITY_SUFFIX.get(source.modality, "_color")
-    split_dfs: List[pd.DataFrame] = []
+    modality_suffix = MODALITY_SUFFIX[source.modality]
+    split_dfs: list[pd.DataFrame] = []
 
     for split in selected_splits:
         split_df = _build_split_df(
@@ -60,7 +58,7 @@ def build(config, source: AUTSLSourceConfig, log: logging.Logger) -> pd.DataFram
             class_lookup=class_lookup,
             log=log,
         )
-        if split_df is not None and len(split_df) > 0:
+        if split_df is not None and not split_df.empty:
             split_dfs.append(split_df)
 
     if not split_dfs:
@@ -78,7 +76,7 @@ def build(config, source: AUTSLSourceConfig, log: logging.Logger) -> pd.DataFram
         rel_path_col="REL_PATH",
     )
 
-    write_manifest(df, manifest_path)
+    write_manifest(df, config.paths.manifest)
     return df
 
 
@@ -87,17 +85,15 @@ def _build_split_df(
     release_root: Path,
     source: AUTSLSourceConfig,
     modality_suffix: str,
-    class_lookup: Dict[int, Tuple[str, str]],
+    class_lookup: dict[int, tuple[str, str]],
     log: logging.Logger,
-) -> Optional[pd.DataFrame]:
+) -> pd.DataFrame | None:
     """Build a manifest DataFrame for a single split."""
     try:
         split_dir = discover_split_dir(release_root, split)
     except FileNotFoundError as exc:
         log.warning("Skipping split '%s': %s", split, exc)
         return None
-
-    split_dir_name = split_dir.name
 
     labels_path = resolve_labels_file(split, source, release_root)
     if labels_path is None:
@@ -127,18 +123,21 @@ def _build_split_df(
         )
 
     if labels_df is not None:
-        rows_iter = [(str(r.sample_key), int(r.label_id)) for r in labels_df.itertuples(index=False)]
+        rows_iter = (
+            (str(row.sample_key), int(row.label_id))
+            for row in labels_df.itertuples(index=False)
+        )
     else:
-        rows_iter = [
-            (p.stem.replace(modality_suffix, ""), None)
-            for p in sorted(split_dir.glob(f"*{modality_suffix}.mp4"))
-        ]
+        rows_iter = (
+            (path.stem.removesuffix(modality_suffix), None)
+            for path in sorted(split_dir.glob(f"*{modality_suffix}.mp4"))
+        )
 
     records = []
     skipped = 0
     for sample_key, label_id in rows_iter:
         physical_stem = f"{sample_key}{modality_suffix}"
-        rel_path = f"{split_dir_name}/{physical_stem}.mp4"
+        rel_path = f"{split_dir.name}/{physical_stem}.mp4"
         video_path = release_root / rel_path
         video_exists = video_path.exists()
 
