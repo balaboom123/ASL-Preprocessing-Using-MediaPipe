@@ -14,22 +14,22 @@ class How2SignDataset(DatasetAdapter):
         return _source.get_source_config(config)
 
     def download(self, config, context):
-        source = self.get_source_config(config)
-        stats = _source.validate(source, config, self.logger)
+        self.get_source_config(config)
+        stats = _source.validate(config, self.logger)
         context.stats["dataset.download"] = stats
         return context
 
     def build_manifest(self, config, context):
         source = self.get_source_config(config)
-        manifest_path, df = _manifest.build(config, source)
+        df = _manifest.build(source)
 
-        self._set_manifest(context, manifest_path, df)
+        self._set_manifest(context, source.manifest_csv, df)
         context.stats["dataset.manifest"] = {
             "videos": df["VIDEO_ID"].nunique() if "VIDEO_ID" in df.columns else 0,
             "segments": len(df),
         }
         self.logger.info(
             "How2Sign manifest loaded: %d segments from %s",
-            len(df), manifest_path,
+            len(df), source.manifest_csv,
         )
         return context

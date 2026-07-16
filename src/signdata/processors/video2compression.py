@@ -80,10 +80,6 @@ class Video2CompressionProcessor(BaseProcessor):
 
     def run(self, context):
         cfg = self.config.processing
-        output_dir = context.output_dir / "compressed"
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Load manifest
         df = context.manifest_df
         if df is None:
             self.logger.warning("No manifest loaded, nothing to process.")
@@ -110,6 +106,9 @@ class Video2CompressionProcessor(BaseProcessor):
                 "errors": 0,
             }
             return context
+
+        output_dir = context.output_dir / "compressed"
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         # Create building blocks only after inputs are known
         detector = create_detector(cfg.detection, cfg.detection_config)

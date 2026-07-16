@@ -3,7 +3,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -33,8 +33,8 @@ class WLASLSourceConfig(BaseModel):
 def iter_filtered_instances(entries: list[dict[str, Any]], source: WLASLSourceConfig):
     """Yield WLASL instances after applying subset/split filters."""
     for gloss_idx, entry in enumerate(entries):
-        if source.subset > 0 and gloss_idx >= source.subset:
-            continue
+        if source.subset and gloss_idx >= source.subset:
+            break
 
         for inst_idx, inst in enumerate(entry.get("instances", [])):
             split = str(inst.get("split", ""))
@@ -47,8 +47,17 @@ def get_source_config(config) -> WLASLSourceConfig:
     return WLASLSourceConfig(**config.dataset.source)
 
 
+def read_metadata(source: WLASLSourceConfig) -> list[dict[str, Any]]:
+    path = source.metadata_json
+    if not path or not Path(path).exists():
+        raise FileNotFoundError(
+            f"WLASL metadata JSON not found: {path}\n"
+            "Set dataset.source.metadata_json in your config YAML."
+        )
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
 def validate_release(
-    source: WLASLSourceConfig,
     config,
     log: logging.Logger,
 ) -> dict:
@@ -84,43 +93,34 @@ def download_missing(
             "paths.videos is required for WLASL. Set it in your config YAML."
         )
 
-    metadata_json = source.metadata_json
-    if not metadata_json or not Path(metadata_json).exists():
-        raise FileNotFoundError(f"WLASL metadata JSON not found: {metadata_json}")
-
+    entries = read_metadata(source)
     Path(video_dir).mkdir(parents=True, exist_ok=True)
 
-    entries = json.loads(Path(metadata_json).read_text(encoding="utf-8"))
-
-    video_urls: Dict[str, str] = {}
+    video_urls: dict[str, str] = {}
     for _, _, _, inst in iter_filtered_instances(entries, source):
         url = inst.get("url", "")
         video_id = inst.get("video_id", "")
         if url and video_id:
             video_urls[video_id] = url
 
-    all_ids = set(video_urls.keys())
+    all_ids = set(video_urls)
     existing = all_ids & get_existing_video_ids(video_dir)
     to_download_ids = sorted(all_ids - existing)
 
-    if not to_download_ids:
+    result = {"downloaded": 0, "errors": 0, "missing": []}
+    if to_download_ids:
+        log.info("Downloading %d / %d videos...", len(to_download_ids), len(all_ids))
+        result = download_video_urls(
+            {video_id: video_urls[video_id] for video_id in to_download_ids},
+            video_dir,
+            download_format=source.download_format,
+            rate_limit=source.rate_limit,
+            concurrent_fragments=source.concurrent_fragments,
+            log=log,
+        )
+    else:
         log.info("All %d videos already downloaded.", len(all_ids))
-        stats = {"total": len(all_ids), "downloaded": 0, "errors": 0, "skipped": len(all_ids)}
-        report_dir = Path(config.paths.root) / "acquire_report"
-        write_acquire_report(report_dir, stats, missing=[])
-        return stats
 
-    log.info("Downloading %d / %d videos...", len(to_download_ids), len(all_ids))
-
-    result = download_video_urls(
-        {video_id: video_urls[video_id] for video_id in to_download_ids},
-        video_dir,
-        download_format=source.download_format,
-        rate_limit=source.rate_limit,
-        concurrent_fragments=source.concurrent_fragments,
-        log=log,
-    )
-    missing = result["missing"]
     stats = {
         "total": len(all_ids),
         "downloaded": result["downloaded"],
@@ -128,7 +128,7 @@ def download_missing(
         "skipped": len(existing),
     }
     report_dir = Path(config.paths.root) / "acquire_report"
-    write_acquire_report(report_dir, stats, missing)
+    write_acquire_report(report_dir, stats, result["missing"])
 
     if source.availability_policy == "fail_fast" and result["errors"] > 0:
         raise RuntimeError(

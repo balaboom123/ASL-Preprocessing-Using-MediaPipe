@@ -38,6 +38,13 @@ def get_source_config(config) -> OpenASLSourceConfig:
     return OpenASLSourceConfig(**config.dataset.source)
 
 
+def read_manifest_tsv(source: OpenASLSourceConfig) -> pd.DataFrame:
+    path = source.manifest_tsv
+    if not path or not Path(path).exists():
+        raise FileNotFoundError(f"OpenASL manifest TSV not found: {path}")
+    return pd.read_csv(path, delimiter="\t")
+
+
 def download(
     source: OpenASLSourceConfig,
     config,
@@ -54,43 +61,31 @@ def download(
 
     Path(video_dir).mkdir(parents=True, exist_ok=True)
 
-    tsv_path = source.manifest_tsv
-    if not tsv_path or not Path(tsv_path).exists():
-        raise FileNotFoundError(f"OpenASL manifest TSV not found: {tsv_path}")
-
-    tsv = pd.read_csv(tsv_path, delimiter="\t")
+    tsv = read_manifest_tsv(source)
     if "yid" not in tsv.columns:
         raise ValueError(
             "OpenASL TSV must have a 'yid' column for YouTube video IDs. "
             f"Found columns: {list(tsv.columns)}"
         )
 
-    all_yids = set(tsv["yid"].dropna().astype(str).unique())
+    all_yids = set(tsv["yid"].dropna().astype(str))
     existing = all_yids & get_existing_video_ids(video_dir)
     to_download = sorted(all_yids - existing)
 
-    if not to_download:
+    result = {"downloaded": 0, "errors": 0, "missing": []}
+    if to_download:
+        log.info("Downloading %d / %d videos...", len(to_download), len(all_yids))
+        result = download_youtube_videos(
+            to_download,
+            video_dir,
+            download_format=source.download_format,
+            rate_limit=source.rate_limit,
+            concurrent_fragments=source.concurrent_fragments,
+            log=log,
+        )
+    else:
         log.info("All %d videos already downloaded.", len(all_yids))
-        stats = {
-            "total": len(all_yids),
-            "downloaded": 0,
-            "errors": 0,
-            "skipped": len(all_yids),
-        }
-        report_dir = Path(config.paths.root) / "acquire_report"
-        write_acquire_report(report_dir, stats, missing=[])
-        return stats
 
-    log.info("Downloading %d / %d videos...", len(to_download), len(all_yids))
-
-    result = download_youtube_videos(
-        to_download,
-        video_dir,
-        download_format=source.download_format,
-        rate_limit=source.rate_limit,
-        concurrent_fragments=source.concurrent_fragments,
-        log=log,
-    )
     stats = {
         "total": len(all_yids),
         "downloaded": result["downloaded"],

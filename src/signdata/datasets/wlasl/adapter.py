@@ -28,7 +28,7 @@ class WLASLDataset(DatasetAdapter):
         source = self.get_source_config(config)
 
         if source.download_mode == "validate":
-            stats = _source.validate_release(source, config, self.logger)
+            stats = _source.validate_release(config, self.logger)
         else:
             stats = _source.download_missing(source, config, self.logger)
 

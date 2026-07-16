@@ -24,6 +24,28 @@ def test_get_video_duration_from_frame_metadata(monkeypatch):
     assert get_video_duration("video.mp4") == 2.0
 
 
+def test_get_video_duration_releases_failed_capture(monkeypatch):
+    class FakeCapture:
+        released = False
+
+        def isOpened(self):
+            return False
+
+        def release(self):
+            self.released = True
+
+    class FailedProbe:
+        returncode = 1
+        stdout = ""
+
+    capture = FakeCapture()
+    monkeypatch.setattr(video_utils.cv2, "VideoCapture", lambda _: capture)
+    monkeypatch.setattr(video_utils.subprocess, "run", lambda *_args, **_kwargs: FailedProbe())
+
+    assert get_video_duration("missing.mp4") == 0.0
+    assert capture.released
+
+
 def test_resolve_effective_sample_fps():
     assert resolve_effective_sample_fps(30.0, None) is None
     assert resolve_effective_sample_fps(30.0, 0.5) == 15.0

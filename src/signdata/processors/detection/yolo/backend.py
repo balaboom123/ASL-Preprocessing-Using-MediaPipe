@@ -302,14 +302,14 @@ class YOLODetector(PersonDetector):
                 confidences = boxes.conf.cpu().numpy()
                 xyxy = boxes.xyxy.cpu().numpy()
 
-                for j in range(len(class_ids)):
-                    if int(class_ids[j]) != PERSON_CLASS_ID:
+                for class_id, confidence, bbox in zip(class_ids, confidences, xyxy):
+                    if int(class_id) != PERSON_CLASS_ID:
                         continue
-                    conf = float(confidences[j])
+                    conf = float(confidence)
                     if conf < self.config.confidence_threshold:
                         continue
 
-                    x1, y1, x2, y2 = xyxy[j]
+                    x1, y1, x2, y2 = bbox
                     bbox_area = (x2 - x1) * (y2 - y1)
                     if frame_area > 0 and (bbox_area / frame_area) < self.config.min_bbox_area:
                         continue

@@ -172,19 +172,18 @@ class Video2PartsProcessor(BaseProcessor):
     def run(self, context):
         cfg = self.config.processing
         parts_cfg = cfg.parts_config
-        output_dir = context.output_dir / "raw"
-        output_dir.mkdir(parents=True, exist_ok=True)
-
         df = context.manifest_df
         if df is None:
             self.logger.warning("No manifest loaded, nothing to process.")
             context.stats["processing"] = {"total": 0}
             return context
 
-        estimator = create_estimator(cfg.pose, cfg.pose_config)
         batch_size = cfg.pose_config.batch_size
         video_dir = str(context.videos_dir) if context.videos_dir else ""
         start_col, end_col = get_timing_columns(df)
+        output_dir = context.output_dir / "raw"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        estimator = create_estimator(cfg.pose, cfg.pose_config)
 
         processed = skipped = errors = 0
 

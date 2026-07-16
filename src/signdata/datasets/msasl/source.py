@@ -41,15 +41,10 @@ def get_source_config(config) -> MSASLSourceConfig:
 
 def extract_video_id(url: str) -> str:
     """Extract an 11-character YouTube video ID from a URL."""
-    patterns = [
-        r'(?:v=|/v/|youtu\.be/)([a-zA-Z0-9_-]{11})',
-        r'(?:embed/)([a-zA-Z0-9_-]{11})',
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-    return url.split("/")[-1][:11]
+    match = re.search(
+        r"(?:v=|/v/|youtu\.be/|embed/)([a-zA-Z0-9_-]{11})", url
+    )
+    return match.group(1) if match else url.rsplit("/", 1)[-1][:11]
 
 
 def load_split_json(ann_dir: Path, split: str) -> list[dict]:
@@ -81,9 +76,7 @@ def validate(
         raise FileNotFoundError(f"MS-ASL annotations_dir not found: {ann_dir}")
 
     for split in SPLITS:
-        json_path = ann_dir / f"MSASL_{split}.json"
-        if not json_path.exists():
-            raise FileNotFoundError(f"MS-ASL annotation file not found: {json_path}")
+        load_split_json(ann_dir, split)
     load_classes_json(ann_dir)
 
     video_dir = config.paths.videos
@@ -95,7 +88,10 @@ def validate(
         raise FileNotFoundError(f"MS-ASL video directory not found: {video_dir}")
 
     log.info("MS-ASL annotations validated: %s", source.annotations_dir)
-    return {"validated": True, "videos_on_disk": len(get_existing_video_ids(video_dir, recursive=True))}
+    return {
+        "validated": True,
+        "videos_on_disk": len(get_existing_video_ids(video_dir, recursive=True)),
+    }
 
 
 def download_missing(
@@ -114,40 +110,29 @@ def download_missing(
 
     ann_dir = Path(source.annotations_dir)
     load_classes_json(ann_dir)
-    selected_splits = get_selected_splits(source)
-
-    all_video_ids: set = set()
-    for split in selected_splits:
-        entries = load_split_json(ann_dir, split)
-        for entry in entries:
-            vid = extract_video_id(entry["url"])
-            all_video_ids.add(vid)
+    all_video_ids = {
+        extract_video_id(entry["url"])
+        for split in get_selected_splits(source)
+        for entry in load_split_json(ann_dir, split)
+    }
 
     existing = all_video_ids & get_existing_video_ids(video_dir, recursive=True)
     to_download = sorted(all_video_ids - existing)
 
-    if not to_download:
+    result = {"downloaded": 0, "errors": 0, "missing": []}
+    if to_download:
+        log.info("Downloading %d / %d videos...", len(to_download), len(all_video_ids))
+        result = download_youtube_videos(
+            to_download,
+            video_dir,
+            download_format=source.download_format,
+            rate_limit=source.rate_limit,
+            concurrent_fragments=source.concurrent_fragments,
+            log=log,
+        )
+    else:
         log.info("All %d videos already downloaded.", len(all_video_ids))
-        stats = {
-            "total": len(all_video_ids),
-            "downloaded": 0,
-            "errors": 0,
-            "skipped": len(all_video_ids),
-        }
-        report_dir = Path(config.paths.root) / "acquire_report"
-        write_acquire_report(report_dir, stats, missing=[])
-        return stats
 
-    log.info("Downloading %d / %d videos...", len(to_download), len(all_video_ids))
-
-    result = download_youtube_videos(
-        to_download,
-        video_dir,
-        download_format=source.download_format,
-        rate_limit=source.rate_limit,
-        concurrent_fragments=source.concurrent_fragments,
-        log=log,
-    )
     stats = {
         "total": len(all_video_ids),
         "downloaded": result["downloaded"],

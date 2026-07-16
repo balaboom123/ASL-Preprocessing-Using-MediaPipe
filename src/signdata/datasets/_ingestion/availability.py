@@ -35,17 +35,13 @@ def _apply_policy(
     if policy == "mark_unavailable":
         return df.assign(AVAILABLE=is_available)
 
-    if policy != "drop_unavailable":
-        return df
-
-    missing_count = int((~is_available).sum())
-    if not missing_count:
+    if policy != "drop_unavailable" or is_available.all():
         return df
 
     result = df[is_available].reset_index(drop=True)
     logger.info(
         "Dropped %d rows with unavailable %s (%d remaining).",
-        missing_count, item_name, len(result),
+        len(df) - len(result), item_name, len(result),
     )
     return result
 

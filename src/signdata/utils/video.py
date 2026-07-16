@@ -12,12 +12,14 @@ def get_video_duration(video_path: str) -> float:
     """Return video duration in seconds, or 0.0 when unavailable."""
     try:
         cap = cv2.VideoCapture(video_path)
-        if cap.isOpened():
-            fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
-            frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
+        try:
+            if cap.isOpened():
+                fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+                frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
+                if fps > 0 and frame_count > 0:
+                    return frame_count / fps
+        finally:
             cap.release()
-            if fps > 0 and frame_count > 0:
-                return frame_count / fps
     except Exception:
         pass
 

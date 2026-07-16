@@ -57,11 +57,9 @@ class PipelineRunner:
         if self.config.dataset.manifest:
             logger.info("Running: dataset.manifest")
             context = self.dataset.build_manifest(self.config, context)
-        else:
-            # Load existing manifest so downstream stages can iterate it
-            if self.config.paths.manifest:
-                context.load_manifest(self.config.paths.manifest)
-                self.dataset.validate_loaded_manifest(self.config, context)
+        elif self.config.paths.manifest:
+            context.load_manifest(self.config.paths.manifest)
+            self.dataset.validate_loaded_manifest(self.config, context)
 
         # Filter out unavailable rows before downstream stages
         if context.manifest_df is not None:
@@ -75,7 +73,7 @@ class PipelineRunner:
             if processor_name not in PROCESSOR_REGISTRY:
                 raise ValueError(
                     f"Unknown processor '{processor_name}'. "
-                    f"Available: {list(PROCESSOR_REGISTRY.keys())}"
+                    f"Available: {list(PROCESSOR_REGISTRY)}"
                 )
             processor = PROCESSOR_REGISTRY[processor_name](self.config)
             context = processor.run(context)

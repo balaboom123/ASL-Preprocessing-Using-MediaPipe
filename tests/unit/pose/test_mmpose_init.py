@@ -47,3 +47,14 @@ class TestMMPoseExtractor:
                 [0.3, 0.2, 0.0, 0.8],
             ],
         )
+
+    def test_squeeze_instance_axis_uses_expected_output_rank(self):
+        ext = MMPoseExtractor(object())
+
+        scores = np.zeros((2, 1, 3))
+        keypoints = np.zeros((2, 1, 3, 2))
+        one_keypoint = np.zeros((2, 1, 3))
+
+        assert ext._squeeze_instance_axis(scores, expected_ndim=2).shape == (2, 3)
+        assert ext._squeeze_instance_axis(keypoints, expected_ndim=3).shape == (2, 3, 2)
+        assert ext._squeeze_instance_axis(one_keypoint, expected_ndim=3).shape == (2, 1, 3)

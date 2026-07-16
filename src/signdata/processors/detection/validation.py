@@ -34,11 +34,7 @@ def union_bboxes(
     if not all_bboxes:
         return None
 
-    x1 = min(b[0] for b in all_bboxes)
-    y1 = min(b[1] for b in all_bboxes)
-    x2 = max(b[2] for b in all_bboxes)
-    y2 = max(b[3] for b in all_bboxes)
-    return (x1, y1, x2, y2)
+    return union_bbox_tuples(all_bboxes)
 
 
 def union_bbox_tuples(

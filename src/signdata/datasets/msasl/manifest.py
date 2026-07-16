@@ -1,6 +1,5 @@
 """MS-ASL manifest building."""
 
-import logging
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -39,9 +38,8 @@ _MANIFEST_COLUMNS = [
 ]
 
 
-def build(config, source: MSASLSourceConfig, log: logging.Logger) -> pd.DataFrame:
+def build(config, source: MSASLSourceConfig) -> pd.DataFrame:
     """Build canonical manifest from MS-ASL JSON annotation files."""
-    manifest_path = config.paths.manifest
     ann_dir = Path(source.annotations_dir)
 
     if not ann_dir.exists():
@@ -53,6 +51,7 @@ def build(config, source: MSASLSourceConfig, log: logging.Logger) -> pd.DataFram
         (split, entry)
         for split in get_selected_splits(source)
         for entry in load_split_json(ann_dir, split)
+        if not source.subset or int(entry["label"]) < source.subset
     ]
     video_id_counts = Counter(
         extract_video_id(str(entry["url"])) for _, entry in selected_entries
@@ -72,19 +71,11 @@ def build(config, source: MSASLSourceConfig, log: logging.Logger) -> pd.DataFram
 
     df = pd.DataFrame.from_records(rows, columns=_MANIFEST_COLUMNS)
 
-    if source.subset > 0:
-        before = len(df)
-        df = df[df["CLASS_ID"] < source.subset].reset_index(drop=True)
-        log.info(
-            "Subset filter (<%d classes): %d -> %d rows.",
-            source.subset, before, len(df),
-        )
-
     video_dir = config.paths.videos
     if video_dir and Path(video_dir).is_dir():
         df = apply_availability_policy_paths(df, video_dir, source.availability_policy)
 
-    write_manifest(df, manifest_path)
+    write_manifest(df, config.paths.manifest)
     return df
 
 
@@ -221,12 +212,10 @@ def _resolve_rel_path(
         return sample_matches[0]
 
     video_matches = rel_path_lookup.get(video_id, [])
-    if video_id_counts[video_id] <= 1 or allow_shared_video_paths:
-        if video_matches:
-            return video_matches[0]
-        return f"{video_id}.mp4"
+    if video_id_counts[video_id] > 1 and not allow_shared_video_paths:
+        return f"{sample_id}.mp4"
 
-    return f"{sample_id}.mp4"
+    return video_matches[0] if video_matches else f"{video_id}.mp4"
 
 
 def _coerce_int(value: Any) -> int | None:

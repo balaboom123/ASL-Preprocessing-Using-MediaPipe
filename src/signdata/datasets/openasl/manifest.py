@@ -9,28 +9,21 @@ import pandas as pd
 from .._ingestion.availability import apply_availability_policy
 from .._ingestion.text import normalize_text
 from ...utils.manifest import write_manifest
-from .source import OpenASLSourceConfig
+from .source import OpenASLSourceConfig, read_manifest_tsv
 
 
 def build(config, source: OpenASLSourceConfig, log: logging.Logger) -> pd.DataFrame:
     """Build canonical manifest from OpenASL TSV."""
-    manifest_path = config.paths.manifest
+    tsv = read_manifest_tsv(source)
 
-    tsv_path = source.manifest_tsv
-    if not tsv_path or not Path(tsv_path).exists():
-        raise FileNotFoundError(f"OpenASL manifest TSV not found: {tsv_path}")
-
-    tsv = pd.read_csv(tsv_path, delimiter="\t")
-
-    for required in ("vid", "yid", "start", "end"):
-        if required not in tsv.columns:
-            raise ValueError(
-                f"OpenASL TSV missing required column '{required}'. "
-                f"Available: {list(tsv.columns)}"
-            )
+    missing = {"vid", "yid", "start", "end"} - set(tsv.columns)
+    if missing:
+        raise ValueError(
+            f"OpenASL TSV missing required columns: {sorted(missing)}. "
+            f"Available: {list(tsv.columns)}"
+        )
 
     text_col = source.text_column
-    text_opts = source.text_processing.model_dump()
     has_text = text_col in tsv.columns
 
     if not has_text:
@@ -49,18 +42,15 @@ def build(config, source: OpenASLSourceConfig, log: logging.Logger) -> pd.DataFr
     })
 
     if has_text:
+        text_opts = source.text_processing.model_dump()
         df["TEXT"] = (
             tsv[text_col]
             .fillna("")
             .astype(str)
-            .apply(lambda t: normalize_text(t, **text_opts) if t else "")
+            .apply(lambda text: normalize_text(text, **text_opts))
         )
 
-    optional_passthrough = {
-        "split": "SPLIT",
-        "signer_id": "SIGNER_ID",
-    }
-    for src_col, canon_col in optional_passthrough.items():
+    for src_col, canon_col in (("split", "SPLIT"), ("signer_id", "SIGNER_ID")):
         if src_col in tsv.columns:
             df[canon_col] = tsv[src_col].astype(str)
 
@@ -72,40 +62,22 @@ def build(config, source: OpenASLSourceConfig, log: logging.Logger) -> pd.DataFr
     if video_dir and Path(video_dir).is_dir():
         df = apply_availability_policy(df, video_dir, source.availability_policy)
 
-    write_manifest(df, manifest_path)
+    write_manifest(df, config.paths.manifest)
     return df
 
 
 def _merge_bboxes(df: pd.DataFrame, bbox_path: str) -> pd.DataFrame:
-    df = df.copy()
-
     bboxes = json.loads(Path(bbox_path).read_text(encoding="utf-8"))
-
-    x1, y1, x2, y2, detected = [], [], [], [], []
+    rows = []
 
     for vid in df["SAMPLE_ID"]:
         bbox = bboxes.get(str(vid))
-        if bbox is not None:
-            if isinstance(bbox, dict):
-                bbox = bbox.get("bbox", bbox.get("box"))
-            if isinstance(bbox, (list, tuple)) and len(bbox) >= 4:
-                x1.append(float(bbox[0]))
-                y1.append(float(bbox[1]))
-                x2.append(float(bbox[2]))
-                y2.append(float(bbox[3]))
-                detected.append(True)
-                continue
+        if isinstance(bbox, dict):
+            bbox = bbox.get("bbox", bbox.get("box"))
+        if isinstance(bbox, (list, tuple)) and len(bbox) >= 4:
+            rows.append([float(value) for value in bbox[:4]] + [True])
+        else:
+            rows.append([None, None, None, None, False])
 
-        x1.append(None)
-        y1.append(None)
-        x2.append(None)
-        y2.append(None)
-        detected.append(False)
-
-    df["BBOX_X1"] = x1
-    df["BBOX_Y1"] = y1
-    df["BBOX_X2"] = x2
-    df["BBOX_Y2"] = y2
-    df["PERSON_DETECTED"] = detected
-
-    return df
+    columns = ["BBOX_X1", "BBOX_Y1", "BBOX_X2", "BBOX_Y2", "PERSON_DETECTED"]
+    return df.join(pd.DataFrame(rows, columns=columns, index=df.index))

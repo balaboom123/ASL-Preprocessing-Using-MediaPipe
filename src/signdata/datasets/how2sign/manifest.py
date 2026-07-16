@@ -6,9 +6,9 @@ from ...utils.manifest import read_manifest
 from .source import How2SignSourceConfig
 
 
-def build(config, source: How2SignSourceConfig):
+def build(source: How2SignSourceConfig):
     """Load the existing How2Sign manifest CSV."""
-    manifest_path = source.manifest_csv or config.paths.manifest
+    manifest_path = source.manifest_csv
 
     if not manifest_path or not Path(manifest_path).exists():
         raise FileNotFoundError(
@@ -16,5 +16,4 @@ def build(config, source: How2SignSourceConfig):
             f"Provide a valid manifest path via paths.manifest in config."
         )
 
-    df = read_manifest(manifest_path)
-    return manifest_path, df
+    return read_manifest(manifest_path)

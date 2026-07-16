@@ -38,7 +38,7 @@ class MSASLDataset(DatasetAdapter):
 
     def build_manifest(self, config, context):
         source = self.get_source_config(config)
-        df = _manifest.build(config, source, self.logger)
+        df = _manifest.build(config, source)
         self._set_manifest(context, config.paths.manifest, df)
         context.stats["dataset.manifest"] = {
             "videos": int(df["VIDEO_ID"].nunique()),

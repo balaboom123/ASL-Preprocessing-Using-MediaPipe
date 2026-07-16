@@ -1,13 +1,10 @@
 """MediaPipe detection-only backend."""
 
-import logging
 from typing import List
 
 import numpy as np
 
 from ..base import Detection, PersonDetector
-
-logger = logging.getLogger(__name__)
 
 
 class MediaPipeDetector(PersonDetector):
@@ -23,9 +20,7 @@ class MediaPipeDetector(PersonDetector):
             config: MediaPipeDetectionConfig with min_detection_confidence.
         """
         import mediapipe as mp
-        self.config = config
-        self.mp_pose = mp.solutions.pose
-        self.detector = self.mp_pose.Pose(
+        self.detector = mp.solutions.pose.Pose(
             static_image_mode=True,
             model_complexity=0,  # lightweight for detection only
             min_detection_confidence=config.min_detection_confidence,
@@ -40,21 +35,22 @@ class MediaPipeDetector(PersonDetector):
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             result = self.detector.process(rgb)
 
+            frame_detections = []
             if result.pose_landmarks:
-                # Compute bounding box from visible landmarks
-                xs = [lm.x * w for lm in result.pose_landmarks.landmark if lm.visibility > 0.3]
-                ys = [lm.y * h for lm in result.pose_landmarks.landmark if lm.visibility > 0.3]
-
-                if xs and ys:
-                    det = Detection(
-                        bbox=(min(xs), min(ys), max(xs), max(ys)),
-                        confidence=1.0,
+                points = [
+                    (lm.x * w, lm.y * h)
+                    for lm in result.pose_landmarks.landmark
+                    if lm.visibility > 0.3
+                ]
+                if points:
+                    xs, ys = zip(*points)
+                    frame_detections.append(
+                        Detection(
+                            bbox=(min(xs), min(ys), max(xs), max(ys)),
+                            confidence=1.0,
+                        )
                     )
-                    all_detections.append([det])
-                else:
-                    all_detections.append([])
-            else:
-                all_detections.append([])
+            all_detections.append(frame_detections)
 
         return all_detections
 

@@ -33,45 +33,36 @@ class MMPoseExtractor(LandmarkExtractor):
         from mmpose.apis import inference_topdown
         from mmpose.structures import merge_data_samples
 
-        if bbox is not None:
-            bboxes = bbox
-        else:
-            H, W = frame.shape[:2]
-            bboxes = np.array([[0, 0, W, H]], dtype=np.float32)
+        if bbox is None:
+            height, width = frame.shape[:2]
+            bbox = np.array([[0, 0, width, height]], dtype=np.float32)
 
-        pose_est_results = inference_topdown(self.pose_estimator, frame, bboxes)
+        pose_est_results = inference_topdown(self.pose_estimator, frame, bbox)
         if not pose_est_results:
             return None
 
-        for idx, pose_est_result in enumerate(pose_est_results):
-            pose_est_result.track_id = pose_est_results[idx].get("track_id", 1e4)
-
+        for pose_est_result in pose_est_results:
+            pose_est_result.track_id = pose_est_result.get("track_id", 1e4)
             pred_instances = pose_est_result.pred_instances
-            keypoints = pred_instances.keypoints
-            keypoint_scores = pred_instances.keypoint_scores
-
-            if keypoint_scores.ndim == 3:
-                keypoint_scores = np.squeeze(keypoint_scores, axis=1)
-                pose_est_results[idx].pred_instances.keypoint_scores = keypoint_scores
-
-            if keypoints.ndim == 4:
-                keypoints = np.squeeze(keypoints, axis=1)
-
-            pose_est_results[idx].pred_instances.keypoints = keypoints
+            pred_instances.keypoints = self._squeeze_instance_axis(
+                pred_instances.keypoints, expected_ndim=3
+            )
+            pred_instances.keypoint_scores = self._squeeze_instance_axis(
+                pred_instances.keypoint_scores, expected_ndim=2
+            )
 
         pose_est_results = sorted(
             pose_est_results, key=lambda x: x.get("track_id", 1e4)
         )
 
         pred_3d_data_samples = merge_data_samples(pose_est_results)
-        pred_3d_instances = pred_3d_data_samples.get("pred_instances", None)
+        pred_3d_instances = pred_3d_data_samples.get("pred_instances")
 
         if pred_3d_instances is None:
             return None
 
-        H, W = frame.shape[:2]
-        packed = self._pack_keypoints(pred_3d_instances, W, H)
-        return packed
+        height, width = frame.shape[:2]
+        return self._pack_keypoints(pred_3d_instances, width, height)
 
     def _pack_keypoints(
         self,
@@ -90,8 +81,12 @@ class MMPoseExtractor(LandmarkExtractor):
             return None
 
         k3d = self._to_numpy(k3d)
-        k3d = self._squeeze_kpts(k3d)
-        tk = k3d if tk is None else self._squeeze_kpts(self._to_numpy(tk))
+        k3d = self._squeeze_instance_axis(k3d, expected_ndim=3)
+        tk = (
+            k3d
+            if tk is None
+            else self._squeeze_instance_axis(self._to_numpy(tk), expected_ndim=3)
+        )
 
         if tk.ndim != 3 or k3d.ndim != 3 or tk.shape[0] == 0 or k3d.shape[0] == 0:
             return None
@@ -118,8 +113,7 @@ class MMPoseExtractor(LandmarkExtractor):
         else:
             visible = np.ones(xy.shape[0], dtype=np.float32)
 
-        out = np.stack([x_norm, y_norm, z, visible], axis=-1).astype(np.float32)
-        return out
+        return np.stack([x_norm, y_norm, z, visible], axis=-1).astype(np.float32)
 
     @staticmethod
     def _to_numpy(x):
@@ -130,7 +124,7 @@ class MMPoseExtractor(LandmarkExtractor):
         return np.asarray(x)
 
     @staticmethod
-    def _squeeze_kpts(arr):
-        if arr.ndim == 4 and arr.shape[1] == 1:
-            arr = arr[:, 0]
+    def _squeeze_instance_axis(arr, expected_ndim: int):
+        if arr.ndim == expected_ndim + 1 and arr.shape[1] == 1:
+            return arr[:, 0]
         return arr

@@ -26,12 +26,6 @@ class Video2CropProcessor(BaseProcessor):
 
     def run(self, context):
         cfg = self.config.processing
-        output_dir = context.output_dir / "raw"
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create building blocks
-        detector = create_detector(cfg.detection, cfg.detection_config)
-        # Load manifest
         df = context.manifest_df
         if df is None:
             self.logger.warning("No manifest loaded, nothing to process.")
@@ -40,6 +34,9 @@ class Video2CropProcessor(BaseProcessor):
 
         start_col, end_col = get_timing_columns(df)
         video_dir = str(context.videos_dir) if context.videos_dir else ""
+        output_dir = context.output_dir / "raw"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        detector = create_detector(cfg.detection, cfg.detection_config)
 
         processed = skipped = errors = 0
         total = len(df)

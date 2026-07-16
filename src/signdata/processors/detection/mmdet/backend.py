@@ -107,13 +107,13 @@ class MMDetDetector(PersonDetector):
                     scores = pred.scores.cpu().numpy()
                     labels = pred.labels.cpu().numpy()
 
-                    for j in range(len(labels)):
-                        if int(labels[j]) != 0:  # person class
+                    for bbox, score, label in zip(bboxes, scores, labels):
+                        if int(label) != 0:  # person class
                             continue
-                        x1, y1, x2, y2 = bboxes[j]
+                        x1, y1, x2, y2 = bbox
                         frame_dets.append(Detection(
                             bbox=(float(x1), float(y1), float(x2), float(y2)),
-                            confidence=float(scores[j]),
+                            confidence=float(score),
                         ))
 
                 all_detections.append(frame_dets)

@@ -1,6 +1,6 @@
 """MediaPipe-based holistic landmark extraction."""
 
-from typing import Optional, List
+from typing import List, Optional
 
 import cv2
 import mediapipe as mp
@@ -17,9 +17,7 @@ class MediaPipeExtractor(LandmarkExtractor):
     """
 
     def __init__(self, config):
-        self.refine_face = config.refine_face_landmarks
-        self.face_count = 478 if self.refine_face else 468
-        # Total landmark count for convenience
+        self.face_count = 478 if config.refine_face_landmarks else 468
         self.num_landmarks = 33 + self.face_count + 21 + 21
 
         self.holistic = mp.solutions.holistic.Holistic(
@@ -50,14 +48,15 @@ class MediaPipeExtractor(LandmarkExtractor):
             getattr(results.right_hand_landmarks, "landmark", None), 21
         )
 
-        landmark_array = np.concatenate([
-            pose_landmarks,
-            face_landmarks,
-            left_hand_landmarks,
-            right_hand_landmarks,
-        ], axis=0)
-
-        return landmark_array.astype(np.float32)
+        return np.concatenate(
+            [
+                pose_landmarks,
+                face_landmarks,
+                left_hand_landmarks,
+                right_hand_landmarks,
+            ],
+            axis=0,
+        ).astype(np.float32)
 
     def _convert_all_landmarks_to_array(
         self,
@@ -65,14 +64,15 @@ class MediaPipeExtractor(LandmarkExtractor):
         expected_count: int,
     ) -> np.ndarray:
         """Convert all MediaPipe landmarks to numpy array."""
-        if landmarks:
-            out = []
-            for lm in landmarks:
-                vis = getattr(lm, "visibility", 1.0)
-                out.append([lm.x, lm.y, lm.z, vis])
-            return np.array(out, dtype=np.float32)
-        else:
+        if not landmarks:
             return np.zeros((expected_count, 4), dtype=np.float32)
+        return np.array(
+            [
+                [lm.x, lm.y, lm.z, getattr(lm, "visibility", 1.0)]
+                for lm in landmarks
+            ],
+            dtype=np.float32,
+        )
 
     def close(self):
         if self.holistic is not None:

@@ -20,9 +20,11 @@ def parse_cuda_device_index(device: str) -> Optional[int]:
     if text == "cuda":
         return 0
 
-    _, sep, suffix = text.partition(":")
-    if not sep or not suffix:
-        return 0
+    prefix, sep, suffix = text.partition(":")
+    if prefix != "cuda" or not sep or not suffix:
+        raise RuntimeError(
+            f"Invalid CUDA device {device!r}. Use 'cuda' or 'cuda:<index>'."
+        )
 
     try:
         return int(suffix)
