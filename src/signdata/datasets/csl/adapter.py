@@ -45,8 +45,7 @@ class CSLDataset(DatasetAdapter):
         runtime_dir = _source.resolve_runtime_video_dir(source, config)
         context.videos_dir = runtime_dir
         df = _manifest.build(config, source, self.logger)
-        context.manifest_path = Path(config.paths.manifest)
-        context.manifest_df = df
+        self._set_manifest(context, config.paths.manifest, df)
         context.stats["dataset.manifest"] = {
             "videos": int(df["VIDEO_ID"].nunique()),
             "segments": len(df),

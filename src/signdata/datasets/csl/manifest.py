@@ -4,7 +4,6 @@ import logging
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -13,7 +12,6 @@ from .._ingestion.media import get_video_duration, get_video_fps
 from ...utils.manifest import write_manifest
 from .source import (
     CSLSourceConfig,
-    DEFAULT_FPS,
     REPETITIONS_PER_SIGNER,
     SPLIT_I_TEST_SIGNERS,
     SPLIT_I_TRAIN_SIGNERS,
@@ -28,7 +26,6 @@ from .source import (
 
 def build(config, source: CSLSourceConfig, log: logging.Logger) -> pd.DataFrame:
     """Build a canonical manifest from the continuous CSL release."""
-    manifest_path = config.paths.manifest
     release_dir = resolve_release_dir(source, config)
     video_dir = resolve_runtime_video_dir(source, config)
 
@@ -60,7 +57,7 @@ def build(config, source: CSLSourceConfig, log: logging.Logger) -> pd.DataFrame:
     max_sentence_id = int(corpus["sentence_id"].max())
     sentence_base = 0 if max_sentence_id <= 99 else 1
 
-    custom_splits: Optional[Dict[str, str]] = None
+    custom_splits: dict[str, str] | None = None
     if source.split_spec_file and Path(source.split_spec_file).exists():
         custom_splits = _load_split_spec(source.split_spec_file)
         log.info(
@@ -76,11 +73,11 @@ def build(config, source: CSLSourceConfig, log: logging.Logger) -> pd.DataFrame:
             "Expected video clips after validation/materialization."
         )
 
-    rows: List[Dict] = []
+    rows: list[dict] = []
     for sentence_id in sorted(sample_groups):
         sample_paths = sorted(
             sample_groups[sentence_id],
-            key=lambda path: str(path.relative_to(video_dir)).lower(),
+            key=lambda path: path.relative_to(video_dir).as_posix().casefold(),
         )
         sentence_text = text_lookup.get(sentence_id, "")
         if sentence_id not in text_lookup:
@@ -88,7 +85,7 @@ def build(config, source: CSLSourceConfig, log: logging.Logger) -> pd.DataFrame:
 
         variation_counts: Counter[int] = Counter()
         for ordinal, sample_path in enumerate(sample_paths):
-            rel_path = str(sample_path.relative_to(video_dir)).replace("\\", "/")
+            rel_path = sample_path.relative_to(video_dir).as_posix()
             signer_id, explicit_variation_id = _infer_signer_and_variation(
                 sample_path,
                 video_dir=video_dir,
@@ -126,12 +123,9 @@ def build(config, source: CSLSourceConfig, log: logging.Logger) -> pd.DataFrame:
                 "TEXT": sentence_text,
                 "SIGNER_ID": str(signer_id),
                 "LANGUAGE": "zh",
-                "FPS": get_video_fps(str(sample_path)) or source.video_fps or DEFAULT_FPS,
+                "FPS": get_video_fps(str(sample_path)) or source.video_fps,
                 "VARIATION_ID": variation_id,
             })
-
-    if not rows:
-        raise RuntimeError("CSL build_manifest produced no rows. Check corpus and video layout.")
 
     df = pd.DataFrame(rows)
 
@@ -147,28 +141,18 @@ def build(config, source: CSLSourceConfig, log: logging.Logger) -> pd.DataFrame:
         rel_path_col="REL_PATH",
     )
 
-    canonical_columns = [
-        "SAMPLE_ID", "VIDEO_ID", "REL_PATH", "SPLIT",
-        "START", "END", "TEXT", "SIGNER_ID",
-        "LANGUAGE", "FPS", "VARIATION_ID",
-    ]
-    ordered = [column for column in canonical_columns if column in df.columns]
-    extra = [column for column in df.columns if column not in ordered]
-    df = df[ordered + extra]
-
-    write_manifest(df, manifest_path)
+    write_manifest(df, config.paths.manifest)
     return df
 
 
 def _parse_corpus(corpus_path: Path, log: logging.Logger) -> pd.DataFrame:
-    raw_lines = corpus_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    data_lines = [line for line in raw_lines if line.strip() and not line.startswith("#")]
-    if not data_lines:
-        return pd.DataFrame()
-
     rows = []
     skipped = 0
-    for line in data_lines:
+    for line in corpus_path.read_text(
+        encoding="utf-8", errors="replace"
+    ).splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
         parts = line.split("\t") if "\t" in line else line.split()
         parts = [part.strip() for part in parts if part.strip()]
         if len(parts) < 2:
@@ -181,21 +165,17 @@ def _parse_corpus(corpus_path: Path, log: logging.Logger) -> pd.DataFrame:
             skipped += 1
             continue
 
-        if len(parts) >= 3 and parts[1].isdigit():
-            text = " ".join(parts[2:])
-        else:
-            text = " ".join(parts[1:])
-
-        rows.append({"sentence_id": sentence_id, "text": text})
+        text_parts = parts[2:] if len(parts) >= 3 and parts[1].isdigit() else parts[1:]
+        rows.append({"sentence_id": sentence_id, "text": " ".join(text_parts)})
 
     if skipped:
         log.warning("Skipped %d malformed CSL corpus lines in %s", skipped, corpus_path)
 
-    return pd.DataFrame(rows) if rows else pd.DataFrame()
+    return pd.DataFrame(rows)
 
 
-def _discover_video_groups(video_dir: Path, log: logging.Logger) -> Dict[int, List[Path]]:
-    grouped: Dict[int, List[Path]] = defaultdict(list)
+def _discover_video_groups(video_dir: Path, log: logging.Logger) -> dict[int, list[Path]]:
+    grouped: dict[int, list[Path]] = defaultdict(list)
     for path in sorted(video_dir.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in VIDEO_EXTENSIONS:
             continue
@@ -207,7 +187,7 @@ def _discover_video_groups(video_dir: Path, log: logging.Logger) -> Dict[int, Li
     return grouped
 
 
-def _infer_sentence_id(path: Path, video_dir: Path) -> Optional[int]:
+def _infer_sentence_id(path: Path, video_dir: Path) -> int | None:
     relative = path.relative_to(video_dir)
     for part in relative.parts[:-1]:
         if part.isdigit():
@@ -225,16 +205,16 @@ def _infer_signer_and_variation(
     video_dir: Path,
     sentence_id: int,
     ordinal: int,
-) -> tuple[int, Optional[int]]:
+) -> tuple[int, int | None]:
     numbers = _extract_sample_numbers(
         path,
         video_dir=video_dir,
         sentence_id=sentence_id,
     )
     if len(numbers) >= 2:
-        return _normalize_csl_index(numbers[-2]), _normalize_csl_index(numbers[-1])
+        return max(numbers[-2], 1), max(numbers[-1], 1)
     if len(numbers) == 1:
-        return _normalize_csl_index(numbers[0]), None
+        return max(numbers[0], 1), None
 
     signer_id = ordinal // REPETITIONS_PER_SIGNER + 1
     variation_id = ordinal % REPETITIONS_PER_SIGNER + 1
@@ -269,13 +249,9 @@ def _positive_numbers(value: str) -> list[int]:
     return [int(token) for token in re.findall(r"\d+", value)]
 
 
-def _normalize_csl_index(value: int) -> int:
-    return value if value > 0 else 1
-
-
 def _resolve_split_label(
     *,
-    custom_splits: Optional[Dict[str, str]],
+    custom_splits: dict[str, str] | None,
     sample_id: str,
     rel_path: str,
     sample_path: Path,
@@ -326,6 +302,6 @@ def _assign_split(
     )
 
 
-def _load_split_spec(spec_file: str) -> Dict[str, str]:
+def _load_split_spec(spec_file: str) -> dict[str, str]:
     df = pd.read_csv(spec_file, sep="\t", header=None, names=["sample_id", "split"])
     return dict(zip(df["sample_id"].astype(str), df["split"].astype(str)))

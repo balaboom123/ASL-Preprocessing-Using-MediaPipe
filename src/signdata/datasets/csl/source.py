@@ -176,27 +176,7 @@ def prepare(source: CSLSourceConfig, config, log: logging.Logger) -> dict:
         )
 
     materialized_dir = resolve_materialized_video_dir(config, release_dir)
-    rgb_has_videos = has_video_files(rgb_dir)
-    materialized_has_videos = has_video_files(materialized_dir)
-    frame_layout = has_frame_layout(rgb_dir)
-
-    if source.prepare_mode == "validate":
-        runtime_dir = _resolve_validate_runtime_dir(
-            rgb_dir=rgb_dir,
-            materialized_dir=materialized_dir,
-            rgb_has_videos=rgb_has_videos,
-            materialized_has_videos=materialized_has_videos,
-            frame_layout=frame_layout,
-        )
-        return _build_prepare_stats(
-            source=source,
-            release_dir=release_dir,
-            corpus_path=corpus_path,
-            runtime_video_dir=runtime_dir,
-            validated=True,
-        )
-
-    if rgb_has_videos:
+    if has_video_files(rgb_dir):
         log.info("CSL RGB directory already contains video files: %s", rgb_dir)
         return _build_prepare_stats(
             source=source,
@@ -206,7 +186,28 @@ def prepare(source: CSLSourceConfig, config, log: logging.Logger) -> dict:
             validated=True,
         )
 
-    if not frame_layout:
+    materialized_has_videos = has_video_files(materialized_dir)
+    if source.prepare_mode == "validate":
+        if materialized_has_videos:
+            return _build_prepare_stats(
+                source=source,
+                release_dir=release_dir,
+                corpus_path=corpus_path,
+                runtime_video_dir=materialized_dir,
+                validated=True,
+            )
+        if has_frame_layout(rgb_dir):
+            raise FileNotFoundError(
+                "CSL validate mode found frame directories but no video files. "
+                "Set dataset.source.prepare_mode=materialize_missing to convert "
+                "frame folders into .mp4 clips for the pipeline."
+            )
+        raise FileNotFoundError(
+            "No CSL video files found in either the RGB release directory or "
+            "paths.videos."
+        )
+
+    if not has_frame_layout(rgb_dir):
         if materialized_has_videos:
             log.info(
                 "Using previously materialized CSL videos in %s",
@@ -270,30 +271,6 @@ def _build_prepare_stats(
         "protocol": source.protocol,
         "mode": source.prepare_mode,
     }
-
-
-def _resolve_validate_runtime_dir(
-    *,
-    rgb_dir: Path,
-    materialized_dir: Path,
-    rgb_has_videos: bool,
-    materialized_has_videos: bool,
-    frame_layout: bool,
-) -> Path:
-    if rgb_has_videos:
-        return rgb_dir
-    if materialized_has_videos:
-        return materialized_dir
-    if frame_layout:
-        raise FileNotFoundError(
-            "CSL validate mode found frame directories but no video files. "
-            "Set dataset.source.prepare_mode=materialize_missing to convert "
-            "frame folders into .mp4 clips for the pipeline."
-        )
-    raise FileNotFoundError(
-        "No CSL video files found in either the RGB release directory or "
-        "paths.videos."
-    )
 
 
 def _materialize_frame_tree(

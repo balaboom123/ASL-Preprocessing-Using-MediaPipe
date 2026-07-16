@@ -157,7 +157,7 @@ class TestCSLSourceConfig:
 
 
 class TestCSLDownload:
-    def test_validate_mode_uses_rgb_video_dir(self, tmp_path):
+    def test_validate_mode_uses_rgb_video_dir(self, tmp_path, monkeypatch):
         release_dir = tmp_path / "release"
         _write_corpus(release_dir / "corpus.txt", [("000000", "你好")])
         _touch_video(release_dir / "color" / "000000" / "sample_01_01.mp4")
@@ -166,6 +166,11 @@ class TestCSLDownload:
             tmp_path / "manifest.tsv",
             paths={"root": str(release_dir), "videos": str(tmp_path / "videos")},
             source={"prepare_mode": "validate"},
+        )
+        monkeypatch.setattr(
+            csl_source,
+            "has_frame_layout",
+            lambda _: pytest.fail("RGB videos should skip frame-tree scanning"),
         )
 
         adapter = CSLDataset()
