@@ -190,6 +190,26 @@ class TestProcessingConfig:
         assert isinstance(p.video_config, VideoProcessingConfig)
         assert p.video_config.codec == "libx264"
         assert p.video_config.padding == 0.0
+        assert p.video_config.crf == 20
+        assert p.video_config.preset == "medium"
+        assert p.video_config.scene_cut_threshold == 0.35
+        assert p.video_config.crop_window_seconds == 5.0
+        assert p.video_config.min_track_seconds == 1.0
+        assert p.video_config.max_crop_area_ratio == 0.8
+        assert p.video_config.max_crop_shift_ratio == 0.25
+        assert p.video_config.min_video_reduction_ratio == 0.1
+        assert p.video_config.pilot_segment_seconds == 10.0
+        assert p.video_config.min_track_hits == 2
+
+    def test_video_config_rejects_invalid_compression_controls(self):
+        with pytest.raises(ValidationError):
+            VideoProcessingConfig(crf=52)
+        with pytest.raises(ValidationError):
+            VideoProcessingConfig(scene_cut_threshold=1.1)
+        with pytest.raises(ValidationError):
+            VideoProcessingConfig(min_track_hits=0)
+        with pytest.raises(ValidationError):
+            VideoProcessingConfig(max_crop_area_ratio=0.0)
 
     def test_invalid_processor_rejected(self):
         with pytest.raises(ValidationError):

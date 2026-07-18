@@ -6,6 +6,7 @@ dataset:
 processing:
   enabled: true
   processor: video2compression
+  sample_rate: null  # compression always preserves the source FPS
   detection: yolo
   max_workers: 4
   detection_config:
@@ -15,7 +16,15 @@ processing:
     confidence_threshold: 0.5
   video_config:
     codec: libx264
-    padding: 0.1
+    crf: 20
+    preset: medium
+    padding: 0.15
+    crop_window_seconds: 5.0
+    min_track_seconds: 1.0
+    max_crop_area_ratio: 0.8
+    max_crop_shift_ratio: 0.25
+    min_video_reduction_ratio: 0.10
+    pilot_segment_seconds: 10.0
 
 post_processing:
   enabled: false

@@ -1,8 +1,10 @@
 """FFmpeg-based video processing utilities."""
 
 import logging
+import shutil
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
@@ -12,6 +14,26 @@ from ...config.schema import VideoProcessingConfig
 from ...utils.video import resolve_effective_sample_fps
 
 logger = logging.getLogger(__name__)
+_opencv_fallback_reported = False
+
+
+@dataclass(frozen=True)
+class CropWindow:
+    """A fixed crop origin active over a half-open frame interval."""
+
+    start_frame: int
+    end_frame: int
+    x: int
+    y: int
+
+
+@dataclass(frozen=True)
+class CropPlan:
+    """Constant-size crop whose origin may change only between shots."""
+
+    width: int
+    height: int
+    windows: tuple[CropWindow, ...]
 
 
 def probe_video(video_path: str) -> tuple[int, int, float] | None:
@@ -26,6 +48,58 @@ def probe_video(video_path: str) -> tuple[int, int, float] | None:
         )
     finally:
         cap.release()
+
+
+def probe_frame_count(video_path: str) -> int | None:
+    """Read the container frame count without decoding the video."""
+    cap = cv2.VideoCapture(video_path)
+    try:
+        if not cap.isOpened():
+            return None
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        return frame_count if frame_count > 0 else None
+    finally:
+        cap.release()
+
+
+def probe_video_stream_size(video_path: str) -> int | None:
+    """Return encoded bytes belonging to the first video stream."""
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe is None:
+        return None
+
+    cmd = [
+        ffprobe,
+        "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "packet=size",
+        "-of", "default=nw=1:nk=1",
+        video_path,
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    total = 0
+    found = False
+    for raw_line in result.stdout.splitlines():
+        try:
+            size = int(raw_line.strip())
+        except (TypeError, ValueError):
+            continue
+        if size >= 0:
+            total += size
+            found = True
+    return total if found else None
 
 
 def ffmpeg_pipe_frames(
@@ -48,6 +122,14 @@ def ffmpeg_pipe_frames(
     Returns:
         List of BGR frames as numpy arrays.
     """
+    if shutil.which("ffmpeg") is None:
+        return _opencv_sample_frames(
+            video_path,
+            start_sec,
+            end_sec,
+            sample_rate,
+        )
+
     try:
         frames: list[np.ndarray] = []
         for batch in iter_ffmpeg_frame_batches(
@@ -55,9 +137,67 @@ def ffmpeg_pipe_frames(
         ):
             frames.extend(batch)
         return frames
+    except FileNotFoundError:
+        return _opencv_sample_frames(
+            video_path,
+            start_sec,
+            end_sec,
+            sample_rate,
+        )
     except Exception as exc:
         logger.error("ffmpeg pipe error: %s", exc)
         return []
+
+
+def _opencv_sample_frames(
+    video_path: str,
+    start_sec: float,
+    end_sec: float,
+    sample_rate: float | None,
+) -> list[np.ndarray]:
+    """Decode sampled frames with OpenCV when ffmpeg is unavailable."""
+    global _opencv_fallback_reported
+    if not _opencv_fallback_reported:
+        logger.warning(
+            "ffmpeg executable not found; using OpenCV for frame decoding"
+        )
+        _opencv_fallback_reported = True
+
+    if end_sec <= start_sec:
+        return []
+
+    cap = cv2.VideoCapture(video_path)
+    try:
+        if not cap.isOpened():
+            return []
+
+        source_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        if source_fps <= 0:
+            return []
+
+        effective_fps = resolve_effective_sample_fps(source_fps, sample_rate)
+        target_fps = source_fps if effective_fps is None else effective_fps
+        sample_ratio = target_fps / source_fps
+        accumulator = 0.0
+
+        start_frame = max(0, int(start_sec * source_fps))
+        end_frame = max(start_frame, int(end_sec * source_fps))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+        frames: list[np.ndarray] = []
+        current_frame = start_frame
+        while current_frame <= end_frame:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            accumulator += sample_ratio
+            if accumulator >= 1.0:
+                accumulator -= 1.0
+                frames.append(frame)
+            current_frame += 1
+        return frames
+    finally:
+        cap.release()
 
 
 def iter_ffmpeg_frame_batches(
@@ -125,7 +265,8 @@ def iter_ffmpeg_frame_batches(
                 break
             if len(raw) != frame_size:
                 logger.warning(
-                    "ffmpeg produced a partial frame for %s; dropping trailing bytes",
+                    "ffmpeg produced a partial frame for %s; dropping "
+                    "trailing bytes",
                     video_path,
                 )
                 break
@@ -154,6 +295,129 @@ def iter_ffmpeg_frame_batches(
         if proc is not None and proc.poll() is None:
             proc.kill()
             proc.wait()
+
+
+def _piecewise_crop_expression(
+    windows: Sequence[CropWindow],
+    coordinate: str,
+    frame_offset: int = 0,
+) -> str:
+    """Build an ffmpeg expression selecting x/y by decoded frame number."""
+    if coordinate not in {"x", "y"}:
+        raise ValueError("coordinate must be 'x' or 'y'")
+    if not windows:
+        raise ValueError("crop plan must contain at least one window")
+
+    previous_value = getattr(windows[0], coordinate)
+    terms = [str(previous_value)]
+    frame_number = "n" if frame_offset == 0 else f"(n+{frame_offset})"
+    for window in windows[1:]:
+        value = getattr(window, coordinate)
+        delta = value - previous_value
+        if delta:
+            # Commas belong to expression functions, not the filter chain.
+            terms.append(
+                f"({delta})*gte({frame_number}\\,{window.start_frame})"
+            )
+        previous_value = value
+    return "+".join(terms)
+
+
+def _encoder_args(video_config: VideoProcessingConfig) -> list[str]:
+    return [
+        "-c:v", video_config.codec,
+        "-preset", video_config.preset,
+        "-crf", str(video_config.crf),
+        "-pix_fmt", "yuv420p",
+        "-an",
+        "-movflags", "+faststart",
+    ]
+
+
+def transcode_with_crop_plan(
+    video_path: str,
+    crop_plan: CropPlan,
+    video_config: VideoProcessingConfig,
+    output_path: str,
+    *,
+    start_frame: int = 0,
+    end_frame: int | None = None,
+    source_fps: float | None = None,
+) -> bool:
+    """Transcode at native timing with a constant-size, shot-aware crop."""
+    if crop_plan.width <= 0 or crop_plan.height <= 0:
+        raise ValueError("crop plan dimensions must be positive")
+    if not crop_plan.windows:
+        raise ValueError("crop plan must contain at least one window")
+
+    expected_start = 0
+    for window in crop_plan.windows:
+        if window.start_frame != expected_start:
+            raise ValueError("crop plan windows must be contiguous")
+        if window.end_frame <= window.start_frame:
+            raise ValueError("crop plan windows must be non-empty")
+        expected_start = window.end_frame
+
+    if start_frame < 0:
+        raise ValueError("start_frame must be non-negative")
+    if end_frame is not None and end_frame <= start_frame:
+        raise ValueError("end_frame must be greater than start_frame")
+
+    if end_frame is not None:
+        if source_fps is None or source_fps <= 0:
+            metadata = probe_video(video_path)
+            source_fps = metadata[2] if metadata is not None else 0.0
+        if source_fps <= 0:
+            raise ValueError("source_fps is required for a partial transcode")
+
+    x_expression = _piecewise_crop_expression(
+        crop_plan.windows, "x", frame_offset=start_frame
+    )
+    y_expression = _piecewise_crop_expression(
+        crop_plan.windows, "y", frame_offset=start_frame
+    )
+    filters = [
+        (
+            f"crop={crop_plan.width}:{crop_plan.height}:"
+            f"{x_expression}:{y_expression}:exact=1"
+        )
+    ]
+    if video_config.resize:
+        filters.append(
+            f"scale={video_config.resize[0]}:{video_config.resize[1]}"
+        )
+
+    cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats"]
+    if end_frame is not None:
+        cmd.extend(["-ss", str(start_frame / source_fps)])
+    cmd.extend(["-i", video_path])
+    if end_frame is not None:
+        cmd.extend(["-t", str((end_frame - start_frame) / source_fps)])
+    cmd.extend([
+        "-vf", ",".join(filters),
+        *_encoder_args(video_config),
+        "-fps_mode", "passthrough",
+        "-v", "error",
+        output_path,
+    ])
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=video_config.encoding_timeout_seconds,
+        )
+        if proc.returncode != 0:
+            logger.error(
+                "ffmpeg compression error: %s",
+                proc.stderr.decode()[:200],
+            )
+            return False
+        return True
+    except Exception as exc:
+        logger.error("ffmpeg compression error: %s", exc)
+        return False
 
 
 def clip_and_crop(
@@ -217,11 +481,20 @@ def clip_and_crop(
     vf_filters.append(f"crop={crop_w}:{crop_h}:{x1}:{y1}")
 
     if video_config.resize:
-        vf_filters.append(f"scale={video_config.resize[0]}:{video_config.resize[1]}")
+        vf_filters.append(
+            f"scale={video_config.resize[0]}:{video_config.resize[1]}"
+        )
 
     cmd.extend(["-vf", ",".join(vf_filters)])
 
-    cmd.extend(["-c:v", video_config.codec, "-preset", "medium", "-crf", "15", "-an"])
+    cmd.extend(
+        [
+            "-c:v", video_config.codec,
+            "-preset", "medium",
+            "-crf", "15",
+            "-an",
+        ]
+    )
     cmd.extend(["-v", "error"])
     cmd.append(output_path)
 

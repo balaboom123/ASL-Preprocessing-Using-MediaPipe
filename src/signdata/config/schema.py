@@ -70,6 +70,20 @@ class VideoProcessingConfig(StrictModel):
     codec: str = "libx264"
     padding: float = 0.0
     resize: list[int] | None = None
+    crf: int = Field(default=20, ge=0, le=51)
+    preset: str = "medium"
+    scene_cut_threshold: float = Field(default=0.35, gt=0.0, le=1.0)
+    crop_window_seconds: float = Field(default=5.0, gt=0.0)
+    min_track_seconds: float = Field(default=1.0, gt=0.0)
+    min_track_hits: int = Field(default=2, gt=0)
+    max_track_gap: int = Field(default=2, ge=0)
+    track_iou_threshold: float = Field(default=0.1, ge=0.0, le=1.0)
+    track_center_distance_ratio: float = Field(default=1.5, gt=0.0)
+    max_crop_area_ratio: float = Field(default=0.8, gt=0.0, le=1.0)
+    max_crop_shift_ratio: float = Field(default=0.25, gt=0.0, le=1.0)
+    min_video_reduction_ratio: float = Field(default=0.10, ge=0.0, lt=1.0)
+    pilot_segment_seconds: float = Field(default=10.0, gt=0.0)
+    encoding_timeout_seconds: int = Field(default=3600, gt=0)
 
 
 class PartsProcessingConfig(StrictModel):
