@@ -5,9 +5,6 @@ dataset:
   source:
     video_ids_file: assets/youtube-asl_youtube_asl_video_ids.txt
     languages: [en, ase, en-US, en-CA, en-GB, en-AU, en-NZ, en-IN, en-ZA, en-IE, en-SG, en-PH, en-NG, en-PK, en-JM]
-    download_format: "worstvideo[height>=720][fps>=24]+worstaudio\
-      /bestvideo[height>=480][height<720][fps>=24][fps<=60]+worstaudio\
-      /bestvideo[height>=480][height<=1080][fps>=14]+worstaudio\
-      /best"
+    # download_format: inherits DEFAULT_DOWNLOAD_FORMAT from the adapter.
     rate_limit: "5M"
     concurrent_fragments: 5

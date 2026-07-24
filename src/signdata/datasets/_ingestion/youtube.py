@@ -26,7 +26,12 @@ def _build_yt_config(
         "format": download_format,
         "merge_output_format": "mp4",
         "postprocessors": [
-            {"key": "FFmpegVideoConvertor", "preferedformat": "mp4"},
+            # Remuxer, not Convertor: FFmpegVideoConvertor re-encodes (it emits
+            # no `-c copy`), so whenever yt-dlp fell back to .mkv because the
+            # streams would not merge into mp4, it silently transcoded the
+            # download to libx264 — undoing the av01/vp9 format preference and
+            # costing a generation of quality. Remuxing only changes container.
+            {"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"},
         ],
         "outtmpl": str(Path(video_dir) / f"{output_stem}.%(ext)s"),
         "ratelimit": rate_limit,

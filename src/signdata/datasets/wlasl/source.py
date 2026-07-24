@@ -25,7 +25,10 @@ class WLASLSourceConfig(BaseModel):
     subset: int = Field(default=0, ge=0)
     availability_policy: AvailabilityPolicy = "drop_unavailable"
     download_mode: Literal["validate", "download_missing"] = "validate"
-    download_format: str = "bestvideo[height>=480]+bestaudio/best"
+    # Capped: uncapped `bestvideo` happily pulls 4K for an isolated-sign clip.
+    download_format: str = (
+        "bestvideo[height>=480][height<=1080]+bestaudio/best"
+    )
     rate_limit: str = "5M"
     concurrent_fragments: int = 5
 
