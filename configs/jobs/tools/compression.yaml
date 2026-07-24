@@ -6,25 +6,26 @@ dataset:
 processing:
   enabled: true
   processor: video2compression
+  # Writes a COMPLETE mirror to <output_dir>/compressed: shrunk files where it
+  # helped, originals hardlinked through where it did not. Nothing is deleted.
+  # After the run, verify the mirror, then repoint paths.videos at it or delete
+  # the originals yourself. Re-encoded files carry a .compression.json sidecar;
+  # passthrough originals have none.
   sample_rate: null  # compression always preserves the source FPS
-  detection: yolo
-  max_workers: 4
-  detection_config:
-    model: yolo11m.pt
-    device: "cuda:0"
-    batch_size: 16
-    confidence_threshold: 0.5
+  # No detection backend: compression re-encodes whole frames and never crops,
+  # so downstream consumers still choose their own regions.
+  max_workers: 3
   video_config:
-    codec: libx264
-    crf: 20
-    preset: medium
-    padding: 0.15
-    crop_window_seconds: 5.0
-    min_track_seconds: 1.0
-    max_crop_area_ratio: 0.8
-    max_crop_shift_ratio: 0.25
+    # hevc_nvenc runs on Maxwell 2nd gen and newer. Switch to av1_nvenc on
+    # Ada (RTX 40xx) or later for roughly another 20% at equal quality.
+    codec: hevc_nvenc
+    preset: p6          # p1 fastest ... p7 best; p6 is the usual knee
+    crf: 26             # -cq on NVENC. PLACEHOLDER: set from the VMAF sweep
+    aq_strength: 8
+    max_bitrate_ratio: 0.8
     min_video_reduction_ratio: 0.10
-    pilot_segment_seconds: 10.0
+  # No resize and no fps change: video2pose, video2crop and video2parts all
+  # re-derive their crops from these frames at full resolution.
 
 post_processing:
   enabled: false

@@ -66,24 +66,40 @@ POSE_CONFIG_MAP = {
 
 # --- Video processing config ---
 
+NVENC_PRESETS = frozenset(f"p{index}" for index in range(1, 8))
+
+
 class VideoProcessingConfig(StrictModel):
     codec: str = "libx264"
     padding: float = 0.0
     resize: list[int] | None = None
-    crf: int = Field(default=20, ge=0, le=51)
+    # Constant-quality level: -crf on software encoders, -cq on NVENC. AV1
+    # allows up to 63; h264/hevc cap at 51.
+    crf: int = Field(default=20, ge=0, le=63)
     preset: str = "medium"
-    scene_cut_threshold: float = Field(default=0.35, gt=0.0, le=1.0)
-    crop_window_seconds: float = Field(default=5.0, gt=0.0)
-    min_track_seconds: float = Field(default=1.0, gt=0.0)
-    min_track_hits: int = Field(default=2, gt=0)
-    max_track_gap: int = Field(default=2, ge=0)
-    track_iou_threshold: float = Field(default=0.1, ge=0.0, le=1.0)
-    track_center_distance_ratio: float = Field(default=1.5, gt=0.0)
-    max_crop_area_ratio: float = Field(default=0.8, gt=0.0, le=1.0)
-    max_crop_shift_ratio: float = Field(default=0.25, gt=0.0, le=1.0)
+    # NVENC spatial/temporal AQ strength (1 weakest, 15 strongest).
+    aq_strength: int = Field(default=8, ge=1, le=15)
+    # VBV ceiling as a fraction of the source bitrate; null disables the cap.
+    max_bitrate_ratio: float | None = Field(default=0.8, gt=0.0)
     min_video_reduction_ratio: float = Field(default=0.10, ge=0.0, lt=1.0)
-    pilot_segment_seconds: float = Field(default=10.0, gt=0.0)
     encoding_timeout_seconds: int = Field(default=3600, gt=0)
+
+    @model_validator(mode="after")
+    def validate_codec_preset(self):
+        """Catch a codec/preset mismatch at config load, not 3 hours in."""
+        is_nvenc = self.codec.endswith("_nvenc")
+        preset_is_nvenc = self.preset in NVENC_PRESETS
+        if is_nvenc and not preset_is_nvenc:
+            raise ValueError(
+                f"codec={self.codec!r} needs an NVENC preset p1-p7 "
+                f"(p1 fastest, p7 best), got {self.preset!r}"
+            )
+        if not is_nvenc and preset_is_nvenc:
+            raise ValueError(
+                f"preset={self.preset!r} is NVENC-only, but codec="
+                f"{self.codec!r} is a software encoder (try 'medium')"
+            )
+        return self
 
 
 class PartsProcessingConfig(StrictModel):

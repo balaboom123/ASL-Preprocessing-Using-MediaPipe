@@ -1,9 +1,10 @@
 """FFmpeg-based video processing utilities."""
 
+import json
 import logging
 import shutil
 import subprocess
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,24 +17,30 @@ from ...utils.video import resolve_effective_sample_fps
 logger = logging.getLogger(__name__)
 _opencv_fallback_reported = False
 
+# ffmpeg prints this when it parsed an encoder option that no stream consumed —
+# e.g. `-crf` on NVENC, which has no such private option and quietly encodes at
+# its default rate instead. Silent quality loss, so we treat it as fatal.
+_UNUSED_OPTION_MARKER = "has not been used for any stream"
+
+
+class EncoderOptionError(RuntimeError):
+    """ffmpeg parsed an encoder option and then silently discarded it.
+
+    Always a configuration bug rather than a bad input file, so callers should
+    let this abort the run instead of counting it as a per-video error.
+    """
+
 
 @dataclass(frozen=True)
-class CropWindow:
-    """A fixed crop origin active over a half-open frame interval."""
+class VideoInfo:
+    """Everything the compression path needs, from one ffprobe call."""
 
-    start_frame: int
-    end_frame: int
-    x: int
-    y: int
-
-
-@dataclass(frozen=True)
-class CropPlan:
-    """Constant-size crop whose origin may change only between shots."""
-
+    codec: str
     width: int
     height: int
-    windows: tuple[CropWindow, ...]
+    duration: float
+    bitrate_bps: int
+    pix_fmt: str = ""
 
 
 def probe_video(video_path: str) -> tuple[int, int, float] | None:
@@ -50,20 +57,12 @@ def probe_video(video_path: str) -> tuple[int, int, float] | None:
         cap.release()
 
 
-def probe_frame_count(video_path: str) -> int | None:
-    """Read the container frame count without decoding the video."""
-    cap = cv2.VideoCapture(video_path)
-    try:
-        if not cap.isOpened():
-            return None
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        return frame_count if frame_count > 0 else None
-    finally:
-        cap.release()
+def probe_media(video_path: str) -> VideoInfo | None:
+    """Read codec, geometry, duration and bitrate in a single ffprobe call.
 
-
-def probe_video_stream_size(video_path: str) -> int | None:
-    """Return encoded bytes belonging to the first video stream."""
+    Returns None when ffprobe is unavailable or the file is unreadable, so
+    callers must treat "unknown" as a reason to skip rather than to guess.
+    """
     ffprobe = shutil.which("ffprobe")
     if ffprobe is None:
         return None
@@ -72,15 +71,16 @@ def probe_video_stream_size(video_path: str) -> int | None:
         ffprobe,
         "-v", "error",
         "-select_streams", "v:0",
-        "-show_entries", "packet=size",
-        "-of", "default=nw=1:nk=1",
+        "-show_entries",
+        "stream=codec_name,width,height,pix_fmt,bit_rate:format=duration,bit_rate",
+        "-of", "json",
         video_path,
     ]
     try:
         result = subprocess.run(
             cmd,
             capture_output=True,
-            timeout=120,
+            timeout=60,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -89,17 +89,32 @@ def probe_video_stream_size(video_path: str) -> int | None:
     if result.returncode != 0:
         return None
 
-    total = 0
-    found = False
-    for raw_line in result.stdout.splitlines():
-        try:
-            size = int(raw_line.strip())
-        except (TypeError, ValueError):
-            continue
-        if size >= 0:
-            total += size
-            found = True
-    return total if found else None
+    try:
+        payload = json.loads(result.stdout)
+        stream = (payload.get("streams") or [{}])[0]
+    except (ValueError, IndexError):
+        return None
+    container = payload.get("format") or {}
+
+    duration = float(container.get("duration") or 0.0)
+    # VP9/AV1 in WebM routinely omit the per-stream bit_rate, so fall back to
+    # the container rate and finally to file bytes over duration.
+    raw_bitrate = stream.get("bit_rate") or container.get("bit_rate")
+    if raw_bitrate:
+        bitrate_bps = int(raw_bitrate)
+    elif duration > 0:
+        bitrate_bps = int(Path(video_path).stat().st_size * 8 / duration)
+    else:
+        bitrate_bps = 0
+
+    return VideoInfo(
+        codec=str(stream.get("codec_name") or ""),
+        width=int(stream.get("width") or 0),
+        height=int(stream.get("height") or 0),
+        duration=duration,
+        bitrate_bps=bitrate_bps,
+        pix_fmt=str(stream.get("pix_fmt") or ""),
+    )
 
 
 def ffmpeg_pipe_frames(
@@ -297,127 +312,134 @@ def iter_ffmpeg_frame_batches(
             proc.wait()
 
 
-def _piecewise_crop_expression(
-    windows: Sequence[CropWindow],
-    coordinate: str,
-    frame_offset: int = 0,
-) -> str:
-    """Build an ffmpeg expression selecting x/y by decoded frame number."""
-    if coordinate not in {"x", "y"}:
-        raise ValueError("coordinate must be 'x' or 'y'")
-    if not windows:
-        raise ValueError("crop plan must contain at least one window")
-
-    previous_value = getattr(windows[0], coordinate)
-    terms = [str(previous_value)]
-    frame_number = "n" if frame_offset == 0 else f"(n+{frame_offset})"
-    for window in windows[1:]:
-        value = getattr(window, coordinate)
-        delta = value - previous_value
-        if delta:
-            # Commas belong to expression functions, not the filter chain.
-            terms.append(
-                f"({delta})*gte({frame_number}\\,{window.start_frame})"
-            )
-        previous_value = value
-    return "+".join(terms)
+# ffprobe pix_fmt suffixes that mark >8-bit samples. nv12/nv16 (8-bit)
+# deliberately do not match: their digits are a chroma-layout tag, not a depth.
+_HIGH_DEPTH_SUFFIXES = ("10le", "10be", "12le", "12be", "16le", "16be")
 
 
-def _encoder_args(video_config: VideoProcessingConfig) -> list[str]:
-    return [
-        "-c:v", video_config.codec,
-        "-preset", video_config.preset,
-        "-crf", str(video_config.crf),
-        "-pix_fmt", "yuv420p",
+def _output_pix_fmt(source_pix_fmt: str, codec: str) -> str:
+    """Preserve the source bit depth instead of crushing 10-bit to 8-bit.
+
+    A hardcoded yuv420p silently truncates 10-bit sources — the av01/vp9
+    renditions the download step now prefers are often 10-bit — and VMAF is
+    luma-only, so the calibration sweep never sees the loss. Chroma is still
+    normalised to 4:2:0 (near-universal for delivery and required by every
+    NVENC target); only bit depth carries signal the pose/crop stages can use.
+
+    ponytail: h264 is 8-bit only, and >10-bit output caps at p010le/yuv420p10le
+    because that is the deepest NVENC (and a stock libx265 build) will take.
+    """
+    if not source_pix_fmt.endswith(_HIGH_DEPTH_SUFFIXES):
+        return "yuv420p"
+    if codec in ("h264_nvenc", "libx264"):
+        return "yuv420p"
+    return "p010le" if codec.endswith("_nvenc") else "yuv420p10le"
+
+
+def _encoder_args(
+    video_config: VideoProcessingConfig,
+    max_bitrate_bps: int | None,
+    source_pix_fmt: str = "",
+) -> list[str]:
+    """Constant-quality encoder args for the configured codec family.
+
+    NVENC has no `crf` private option. Passing one makes ffmpeg warn and then
+    encode at its own default rate, which is how a "compression" pass ends up
+    producing larger files than it consumed. Constant quality on NVENC is
+    `-cq`, and it only takes effect together with `-rc vbr -b:v 0`.
+    """
+    args = ["-c:v", video_config.codec, "-preset", video_config.preset]
+
+    if video_config.codec.endswith("_nvenc"):
+        args += [
+            "-rc", "vbr",
+            "-cq", str(video_config.crf),
+            "-b:v", "0",
+            # Adaptive quantisation spends bits on the hands and face instead
+            # of flat background, which is exactly where the signal lives.
+            "-spatial-aq", "1",
+            "-aq-strength", str(video_config.aq_strength),
+            # ponytail: temporal AQ needs Turing or newer. On older cards the
+            # unused-option guard below fires; drop this line if so.
+            "-temporal-aq", "1",
+            "-rc-lookahead", "32",
+        ]
+    else:
+        args += ["-crf", str(video_config.crf)]
+
+    if max_bitrate_bps:
+        # A VBV ceiling, not a quality target: loose enough that -cq/-crf still
+        # drives the encode, tight enough to clamp a pathological blow-up.
+        args += [
+            "-maxrate", str(max_bitrate_bps),
+            "-bufsize", str(max_bitrate_bps * 4),
+        ]
+
+    # Keep the source bit depth (10-bit stays 10-bit) and drop audio: no
+    # downstream stage reads it, and copying the usual YouTube Opus track into
+    # mp4 fails the mux outright, which would error otherwise-fine sources.
+    args += [
+        "-pix_fmt", _output_pix_fmt(source_pix_fmt, video_config.codec),
         "-an",
         "-movflags", "+faststart",
     ]
+    return args
 
 
-def transcode_with_crop_plan(
+def _run_ffmpeg(cmd: list[str], timeout: int) -> bool:
+    """Run ffmpeg, raising when it silently discarded an encoder option."""
+    try:
+        proc = subprocess.run(cmd, capture_output=True, timeout=timeout)
+    except Exception as exc:
+        logger.error("ffmpeg error: %s", exc)
+        return False
+
+    stderr = proc.stderr.decode(errors="replace")
+    if _UNUSED_OPTION_MARKER in stderr:
+        ignored = "\n".join(
+            line for line in stderr.splitlines()
+            if _UNUSED_OPTION_MARKER in line
+        )
+        raise EncoderOptionError(
+            "ffmpeg ignored an encoder option, so this encode did not use the "
+            f"configured quality settings:\n{ignored}"
+        )
+    if proc.returncode != 0:
+        logger.error("ffmpeg failed: %s", stderr[-2000:])
+        return False
+    return True
+
+
+def transcode(
     video_path: str,
-    crop_plan: CropPlan,
     video_config: VideoProcessingConfig,
     output_path: str,
     *,
-    start_frame: int = 0,
-    end_frame: int | None = None,
-    source_fps: float | None = None,
+    max_bitrate_bps: int | None = None,
+    source_pix_fmt: str = "",
 ) -> bool:
-    """Transcode at native timing with a constant-size, shot-aware crop."""
-    if crop_plan.width <= 0 or crop_plan.height <= 0:
-        raise ValueError("crop plan dimensions must be positive")
-    if not crop_plan.windows:
-        raise ValueError("crop plan must contain at least one window")
+    """Re-encode a whole video, changing only the codec and quality level.
 
-    expected_start = 0
-    for window in crop_plan.windows:
-        if window.start_frame != expected_start:
-            raise ValueError("crop plan windows must be contiguous")
-        if window.end_frame <= window.start_frame:
-            raise ValueError("crop plan windows must be non-empty")
-        expected_start = window.end_frame
-
-    if start_frame < 0:
-        raise ValueError("start_frame must be non-negative")
-    if end_frame is not None and end_frame <= start_frame:
-        raise ValueError("end_frame must be greater than start_frame")
-
-    if end_frame is not None:
-        if source_fps is None or source_fps <= 0:
-            metadata = probe_video(video_path)
-            source_fps = metadata[2] if metadata is not None else 0.0
-        if source_fps <= 0:
-            raise ValueError("source_fps is required for a partial transcode")
-
-    x_expression = _piecewise_crop_expression(
-        crop_plan.windows, "x", frame_offset=start_frame
-    )
-    y_expression = _piecewise_crop_expression(
-        crop_plan.windows, "y", frame_offset=start_frame
-    )
-    filters = [
-        (
-            f"crop={crop_plan.width}:{crop_plan.height}:"
-            f"{x_expression}:{y_expression}:exact=1"
-        )
-    ]
-    if video_config.resize:
-        filters.append(
-            f"scale={video_config.resize[0]}:{video_config.resize[1]}"
-        )
-
-    cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats"]
-    if end_frame is not None:
-        cmd.extend(["-ss", str(start_frame / source_fps)])
-    cmd.extend(["-i", video_path])
-    if end_frame is not None:
-        cmd.extend(["-t", str((end_frame - start_frame) / source_fps)])
-    cmd.extend([
-        "-vf", ",".join(filters),
-        *_encoder_args(video_config),
+    Deliberately no crop, no scale and no frame-rate change: pose estimation,
+    video2crop and video2parts all re-derive their own regions from the stored
+    file, so the geometry and cadence they see must stay byte-for-byte the
+    same shape as the source.
+    """
+    cmd = [
+        "ffmpeg", "-y", "-hide_banner", "-nostats",
+        # Falls back to software decode when the GPU cannot handle the source
+        # codec, so an AV1 source on an older card still works.
+        "-hwaccel", "auto",
+        "-i", video_path,
+        *_encoder_args(video_config, max_bitrate_bps, source_pix_fmt),
         "-fps_mode", "passthrough",
-        "-v", "error",
+        # Not `-v error`: the unused-option warning we check for is a warning.
+        "-v", "warning",
         output_path,
-    ])
+    ]
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            timeout=video_config.encoding_timeout_seconds,
-        )
-        if proc.returncode != 0:
-            logger.error(
-                "ffmpeg compression error: %s",
-                proc.stderr.decode()[:200],
-            )
-            return False
-        return True
-    except Exception as exc:
-        logger.error("ffmpeg compression error: %s", exc)
-        return False
+    return _run_ffmpeg(cmd, video_config.encoding_timeout_seconds)
 
 
 def clip_and_crop(
