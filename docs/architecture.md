@@ -54,6 +54,8 @@ The pipeline runner dispatches to the processor specified by
 - `video2parts` — video → face/hand crop streams plus upper-body pose, using MediaPipe Holistic
 
 All processors decode video segments through `processors/video/ffmpeg.py`.
+Pose and parts processing use its OpenCV fallback when the FFmpeg executable is
+not installed; video crop and compression outputs require FFmpeg.
 
 When enabled, post-processing runs landmark normalization.
 
