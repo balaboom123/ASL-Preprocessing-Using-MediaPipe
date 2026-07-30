@@ -193,6 +193,7 @@ class TestProcessingConfig:
         assert p.video_config.crf == 20
         assert p.video_config.preset == "medium"
         assert p.video_config.aq_strength == 8
+        assert p.video_config.nvenc_gpu is None
         assert p.video_config.max_bitrate_ratio == 0.8
         assert p.video_config.min_video_reduction_ratio == 0.1
 

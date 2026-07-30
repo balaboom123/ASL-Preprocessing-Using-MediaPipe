@@ -68,6 +68,11 @@ class TestEncoderArgs:
         assert args[args.index("-aq-strength") + 1] == "10"
         assert args[args.index("-preset") + 1] == "p6"
 
+    def test_nvenc_gpu_is_selected(self):
+        config = VideoProcessingConfig(codec="hevc_nvenc", preset="p7", nvenc_gpu=1)
+        args = _encoder_args(config, None)
+        assert args[args.index("-gpu") + 1] == "1"
+
     def test_software_encoder_uses_crf_and_never_cq(self):
         config = VideoProcessingConfig(codec="libx265", preset="slow", crf=22)
         args = _encoder_args(config, None)

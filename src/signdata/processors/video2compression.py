@@ -115,6 +115,7 @@ def _write_metadata(
         "crf": config.crf,
         "preset": config.preset,
         "aq_strength": config.aq_strength,
+        "nvenc_gpu": config.nvenc_gpu,
     }
     metadata_path = _metadata_path(output_path)
     metadata_path.parent.mkdir(parents=True, exist_ok=True)

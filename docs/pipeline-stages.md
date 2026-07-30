@@ -16,6 +16,7 @@
 | `dataset.manifest` | manifest TSV/CSV at `paths.manifest` | `dataset.manifest: true` |
 | `processing.video2pose` | raw landmarks at `{paths.output}/{run_name}/raw/{sample_id}.npy` | `processing.enabled: true` and `processing.processor: video2pose` |
 | `processing.video2crop` | cropped clips at `{paths.output}/{run_name}/raw/{sample_id}.mp4` | `processing.enabled: true` and `processing.processor: video2crop` |
+| `processing.video2compression` | native-FPS compressed videos at `{paths.output}/{run_name}/compressed/` | `processing.enabled: true` and `processing.processor: video2compression` |
 | `processing.video2parts` | part streams at `{paths.output}/{run_name}/raw/{sample_id}/` | `processing.enabled: true` and `processing.processor: video2parts` |
 | `post_processing.normalize` | normalized landmarks at `{paths.output}/{run_name}/normalized/{sample_id}.npy` | `post_processing.enabled: true` with a `post_processing.normalize` block |
 | `output.webdataset` | shards at `{paths.webdataset}/{run_name}/shard-000000.tar` | `output.enabled: true` |
@@ -120,6 +121,28 @@ Key config paths:
 - `processing.video_config.padding`
 - `processing.video_config.resize`
 - `processing.sample_rate`
+
+## `processing.video2compression`
+
+Compresses each unique source video without changing its frame cadence:
+
+1. detect cheap scene cuts from 32 x 32 frame thumbnails
+2. associate person boxes within each shot using IoU and centre distance
+3. retain every persistent person, or use the full frame when selection is uncertain
+4. apply one stable crop per shot with a constant output size
+5. encode to a temporary file with the configured codec and keep it only when
+   it meets the configured minimum size reduction
+
+Outputs are written to:
+
+```text
+{paths.output}/{run_name}/compressed/{source-relative-path}.mp4
+{paths.output}/{run_name}/compressed/{source-relative-path}.mp4.crop.json
+```
+
+The JSON sidecar records the source FPS and frame-indexed crop transforms.
+`processing.sample_rate` is not applied by this processor; source FPS is
+preserved. No landmark model is used for crop safety.
 
 ## `processing.video2parts`
 

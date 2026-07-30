@@ -79,6 +79,8 @@ class VideoProcessingConfig(StrictModel):
     preset: str = "medium"
     # NVENC spatial/temporal AQ strength (1 weakest, 15 strongest).
     aq_strength: int = Field(default=8, ge=1, le=15)
+    # Physical NVIDIA GPU index passed to NVENC/NVDEC; null uses FFmpeg default.
+    nvenc_gpu: int | None = Field(default=None, ge=0)
     # VBV ceiling as a fraction of the source bitrate; null disables the cap.
     max_bitrate_ratio: float | None = Field(default=0.8, gt=0.0)
     min_video_reduction_ratio: float = Field(default=0.10, ge=0.0, lt=1.0)

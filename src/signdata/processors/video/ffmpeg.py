@@ -349,6 +349,8 @@ def _encoder_args(
     `-cq`, and it only takes effect together with `-rc vbr -b:v 0`.
     """
     args = ["-c:v", video_config.codec, "-preset", video_config.preset]
+    if video_config.codec.endswith("_nvenc") and video_config.nvenc_gpu is not None:
+        args += ["-gpu", str(video_config.nvenc_gpu)]
 
     if video_config.codec.endswith("_nvenc"):
         args += [
@@ -425,11 +427,15 @@ def transcode(
     file, so the geometry and cadence they see must stay byte-for-byte the
     same shape as the source.
     """
+    hwaccel_args = ["-hwaccel", "auto"]
+    if video_config.codec.endswith("_nvenc") and video_config.nvenc_gpu is not None:
+        hwaccel_args += ["-hwaccel_device", str(video_config.nvenc_gpu)]
+
     cmd = [
         "ffmpeg", "-y", "-hide_banner", "-nostats",
         # Falls back to software decode when the GPU cannot handle the source
         # codec, so an AV1 source on an older card still works.
-        "-hwaccel", "auto",
+        *hwaccel_args,
         "-i", video_path,
         *_encoder_args(video_config, max_bitrate_bps, source_pix_fmt),
         "-fps_mode", "passthrough",
