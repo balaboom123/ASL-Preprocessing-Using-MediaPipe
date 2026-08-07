@@ -177,14 +177,29 @@ dataset/
 src/signdata/models/checkpoints/*.pth
 src/sltpipe/models/checkpoints/*.pth
 src/sign_prep/models/checkpoints/*.pth
+/models/
 
 # Test notebooks and temporary scripts
 test.py
 acquire_report/
+/data_length.py
+/npy_check.py
+/resample.py
+/video_length.py
+/xyz_check.py
+/scripts/download_with_new_rule.py
+/assets/id_test.txt
+
+# Local analysis output (console dumps from the scripts above)
+/youtube_asl_npy_length
+/youtube_asl_video_length.txt
 
 # Temporary files
 *.tmp
 .DS_Store
+tmp_*
+*.orig
+*.rej
 
 # local resources
 /resources/detection_models/rtmdet/checkpoints/
