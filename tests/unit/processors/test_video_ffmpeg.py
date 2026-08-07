@@ -51,5 +51,7 @@ def test_ffmpeg_pipe_frames_uses_opencv_when_binary_is_missing(monkeypatch):
 
     decoded = ffmpeg.ffmpeg_pipe_frames("video.mp4", 0.0, 0.5, 0.5)
 
-    assert [int(frame[0, 0, 0]) for frame in decoded] == [1, 3, 5]
+    # Same frames ffmpeg's `fps=5` filter would emit for [0.0, 0.5) at 10 fps:
+    # the window starts at frame 0, and frame 5 is outside it.
+    assert [int(frame[0, 0, 0]) for frame in decoded] == [0, 2, 4]
     assert capture.released

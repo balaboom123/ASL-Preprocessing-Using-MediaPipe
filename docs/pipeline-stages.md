@@ -124,25 +124,31 @@ Key config paths:
 
 ## `processing.video2compression`
 
-Compresses each unique source video without changing its frame cadence:
+Re-encodes each unique source video. Geometry, frame cadence and colour are
+left exactly as the source has them — there is no detection, no crop and no
+rescale, because every downstream consumer re-derives its own regions:
 
-1. detect cheap scene cuts from 32 x 32 frame thumbnails
-2. associate person boxes within each shot using IoU and centre distance
-3. retain every persistent person, or use the full frame when selection is uncertain
-4. apply one stable crop per shot with a constant output size
-5. encode to a temporary file with the configured codec and keep it only when
-   it meets the configured minimum size reduction
+1. probe the source codec, geometry, duration and bitrate with `ffprobe`
+2. leave the source alone when it is already in the target codec family
+3. encode to a temporary file with the configured codec and quality
+4. reject the encode if geometry or duration changed, or if it did not meet
+   `min_video_reduction_ratio`; otherwise promote it and write a sidecar
+
+The output directory is a complete mirror: anything not re-encoded is
+hardlinked (or copied) through untouched, so nothing is lost. Nothing is ever
+deleted.
 
 Outputs are written to:
 
 ```text
 {paths.output}/{run_name}/compressed/{source-relative-path}.mp4
-{paths.output}/{run_name}/compressed/{source-relative-path}.mp4.crop.json
+{paths.output}/{run_name}/compressed/{source-relative-path}.mp4.compression.json
 ```
 
-The JSON sidecar records the source FPS and frame-indexed crop transforms.
-`processing.sample_rate` is not applied by this processor; source FPS is
-preserved. No landmark model is used for crop safety.
+The JSON sidecar records the source/output codec, pixel format, byte size,
+bitrate and the encoder settings used. Only re-encoded files get a sidecar;
+passed-through originals have none. `processing.sample_rate` is not applied by
+this processor; source FPS is preserved.
 
 ## `processing.video2parts`
 

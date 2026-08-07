@@ -244,8 +244,9 @@ class Video2CompressionProcessor(BaseProcessor):
         self.logger.info(
             "Mirror ready at %s (%d re-encoded, the rest passed through as "
             "originals). Verify it, then repoint paths.videos or delete the "
-            "originals; %d error(s) with an unreadable source are missing "
-            "from the mirror.",
+            "originals; %d video(s) errored — each is passed through as the "
+            "original unless its source file was missing, in which case it is "
+            "absent from the mirror.",
             output_dir,
             stats["processed"],
             stats["errors"],
@@ -268,6 +269,9 @@ class Video2CompressionProcessor(BaseProcessor):
         try:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.unlink(missing_ok=True)
+            # A sidecar left over from an earlier run would now describe a
+            # re-encode that no longer exists at this path.
+            _metadata_path(output_path).unlink(missing_ok=True)
             try:
                 os.link(source_path, output_path)
             except OSError:

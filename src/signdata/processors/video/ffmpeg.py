@@ -193,7 +193,11 @@ def _opencv_sample_frames(
         effective_fps = resolve_effective_sample_fps(source_fps, sample_rate)
         target_fps = source_fps if effective_fps is None else effective_fps
         sample_ratio = target_fps / source_fps
-        accumulator = 0.0
+        # Start already "due" and test before accumulating, so the window's
+        # first frame is always kept. FFmpeg's `fps=` filter emits frame 0, and
+        # a fallback that dropped it would shift every landmark sequence by one
+        # source frame depending on whether ffmpeg happened to be installed.
+        accumulator = 1.0
 
         start_frame = max(0, int(start_sec * source_fps))
         end_frame = max(start_frame, int(end_sec * source_fps))
@@ -201,14 +205,15 @@ def _opencv_sample_frames(
 
         frames: list[np.ndarray] = []
         current_frame = start_frame
-        while current_frame <= end_frame:
+        # Half-open window, matching `-ss start -t (end - start)`.
+        while current_frame < end_frame:
             ok, frame = cap.read()
             if not ok:
                 break
-            accumulator += sample_ratio
             if accumulator >= 1.0:
                 accumulator -= 1.0
                 frames.append(frame)
+            accumulator += sample_ratio
             current_frame += 1
         return frames
     finally:
@@ -515,14 +520,16 @@ def clip_and_crop(
 
     cmd.extend(["-vf", ",".join(vf_filters)])
 
-    cmd.extend(
-        [
-            "-c:v", video_config.codec,
-            "-preset", "medium",
-            "-crf", "15",
-            "-an",
-        ]
-    )
+    # Crops keep their own near-lossless quality target, but the preset and
+    # rate-control flags still have to match the codec family: NVENC rejects
+    # software preset names and has no `crf` option, so a hardcoded
+    # `-preset medium -crf 15` silently encodes at NVENC's default rate.
+    cmd.extend(["-c:v", video_config.codec, "-preset", video_config.preset])
+    if video_config.codec.endswith("_nvenc"):
+        cmd.extend(["-rc", "vbr", "-cq", "15", "-b:v", "0"])
+    else:
+        cmd.extend(["-crf", "15"])
+    cmd.append("-an")
     cmd.extend(["-v", "error"])
     cmd.append(output_path)
 

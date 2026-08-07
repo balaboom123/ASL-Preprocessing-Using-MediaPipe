@@ -290,16 +290,12 @@ source FPS. It does not upsample or invent frames.
 | `nvenc_gpu` | `int?` | `null` | Physical NVIDIA GPU index for NVENC/NVDEC; `null` uses the FFmpeg default device |
 | `max_bitrate_ratio` | `float?` | `0.8` | Optional maximum output bitrate as a fraction of source bitrate |
 | `min_video_reduction_ratio` | `float` | `0.10` | Minimum required size reduction before keeping a compressed output |
-| `scene_cut_threshold` | `float` | `0.35` | Mean thumbnail-change threshold that resets bbox tracking |
-| `min_track_hits` | `int` | `2` | Minimum matched detections for a persistent person track |
-| `max_track_gap` | `int` | `2` | Missing frames tolerated while associating a person track |
-| `track_iou_threshold` | `float` | `0.1` | Minimum IoU match unless the centre-distance check succeeds |
-| `track_center_distance_ratio` | `float` | `1.5` | Maximum normalized centre shift for bbox association |
-| `max_crop_area_ratio` | `float` | `0.9` | Use full frame when the common crop reaches this area ratio |
 | `encoding_timeout_seconds` | `int` | `3600` | Per-video ffmpeg encoding timeout |
 
-The scene, tracking, crop-area, CRF, preset, and long timeout controls are used
-by `video2compression`; `video2crop` retains its existing clip encoder policy.
+The CRF, preset, AQ, GPU, bitrate-ratio, reduction-gate and timeout controls are
+read by `video2compression`; `video2crop` retains its existing clip encoder
+policy (fixed `-preset medium -crf 15`) and only reads `codec`, `padding` and
+`resize`.
 
 The schema defaults above remain generic for software-encoder and crop-job
 compatibility. The bundled
