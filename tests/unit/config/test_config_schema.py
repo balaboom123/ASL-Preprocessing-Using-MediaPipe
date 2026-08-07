@@ -217,6 +217,20 @@ class TestProcessingConfig:
         nvenc = VideoProcessingConfig(codec="hevc_nvenc", preset="p6")
         assert nvenc.preset == "p6"
 
+    def test_video_config_rejects_named_preset_on_numeric_encoder(self):
+        """libsvtav1 takes -preset as an int; a name fails only at encode."""
+        with pytest.raises(ValidationError, match="numeric preset"):
+            VideoProcessingConfig(codec="libsvtav1", preset="medium")
+        # The NVENC-only message would suggest 'medium', which is also wrong.
+        with pytest.raises(ValidationError, match="numeric preset"):
+            VideoProcessingConfig(codec="libsvtav1", preset="p6")
+        with pytest.raises(ValidationError, match="numeric preset"):
+            VideoProcessingConfig(codec="libsvtav1", preset="14")
+
+        assert VideoProcessingConfig(codec="libsvtav1", preset="8").preset == "8"
+        # YAML `preset: 8` arrives as an int and is coerced to str.
+        assert VideoProcessingConfig(codec="libsvtav1", preset=8).preset == "8"
+
     def test_invalid_processor_rejected(self):
         with pytest.raises(ValidationError):
             ProcessingConfig(processor="invalid")

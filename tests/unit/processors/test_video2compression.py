@@ -484,7 +484,7 @@ class TestVideo2CompressionProcessor:
             "SAMPLE_ID": ["seg_000"],
         })
         config, context, videos_dir = self._make_context(
-            tmp_path, df, codec="libsvtav1"
+            tmp_path, df, codec="libsvtav1", preset="8"
         )
         (videos_dir / "clip.webm").write_bytes(b"s" * 200)
         mirror = tmp_path / "output" / "compression" / "compressed"

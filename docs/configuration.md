@@ -285,17 +285,26 @@ source FPS. It does not upsample or invent frames.
 | `padding` | `float` | `0.0` | Extra crop padding around the detected bbox |
 | `resize` | `list[int]?` | `null` | Optional `[width, height]` resize after crop |
 | `crf` | `int` | `20` | Constant-quality factor; lower is higher quality and larger |
-| `preset` | `str` | `"medium"` | Encoder speed/compression-efficiency preset |
+| `preset` | `str` | `"medium"` | Encoder speed/efficiency preset, in the form the codec expects (see below) |
 | `aq_strength` | `int` | `8` | NVENC spatial/temporal adaptive-quantization strength (`1`–`15`) |
 | `nvenc_gpu` | `int?` | `null` | Physical NVIDIA GPU index for NVENC/NVDEC; `null` uses the FFmpeg default device |
 | `max_bitrate_ratio` | `float?` | `0.8` | Optional maximum output bitrate as a fraction of source bitrate |
 | `min_video_reduction_ratio` | `float` | `0.10` | Minimum required size reduction before keeping a compressed output |
 | `encoding_timeout_seconds` | `int` | `3600` | Per-video ffmpeg encoding timeout |
 
-The CRF, preset, AQ, GPU, bitrate-ratio, reduction-gate and timeout controls are
-read by `video2compression`; `video2crop` retains its existing clip encoder
-policy (fixed `-preset medium -crf 15`) and only reads `codec`, `padding` and
-`resize`.
+`preset` is validated against the codec at config load, because ffmpeg only
+rejects a mismatch once the encode starts:
+
+| Codec | Preset form | Example |
+|---|---|---|
+| `*_nvenc` | `p1`–`p7` (`p1` fastest, `p7` best) | `p7` |
+| `libsvtav1` | integer `-2`–`13` (**`13` fastest**, the reverse of x264) | `8` |
+| `libx264`, `libx265` | x264 names | `medium` |
+
+The CRF, AQ, GPU, bitrate-ratio, reduction-gate and timeout controls are read by
+`video2compression`. `video2crop` keeps its own near-lossless quality target
+(`-crf`/`-cq 15`) rather than reading `crf`, but it does honour `codec`,
+`preset`, `padding` and `resize`.
 
 The schema defaults above remain generic for software-encoder and crop-job
 compatibility. The bundled
