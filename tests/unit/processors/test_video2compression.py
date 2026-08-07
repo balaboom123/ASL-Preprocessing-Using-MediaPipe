@@ -474,6 +474,112 @@ class TestVideo2CompressionProcessor:
         assert result.stats["processing"]["errors"] == 1
         assert not self._output(tmp_path).exists()
 
+    # --- container extension of mirror entries ---------------------------- #
+
+    def _webm_context(self, tmp_path):
+        """A .webm source addressed by REL_PATH, with an AV1 target."""
+        df = pd.DataFrame({
+            "VIDEO_ID": ["vid_a"],
+            "REL_PATH": ["clip.webm"],
+            "SAMPLE_ID": ["seg_000"],
+        })
+        config, context, videos_dir = self._make_context(
+            tmp_path, df, codec="libsvtav1"
+        )
+        (videos_dir / "clip.webm").write_bytes(b"s" * 200)
+        mirror = tmp_path / "output" / "compression" / "compressed"
+        return config, context, mirror
+
+    def test_passthrough_keeps_the_source_container_extension(self, tmp_path):
+        """A hardlinked passthrough must not be relabelled .mp4.
+
+        The bytes are unchanged, so calling WebM data `clip.mp4` produces a
+        file strict readers reject and misreports the archive's contents.
+        """
+        config, context, mirror = self._webm_context(tmp_path)
+
+        with patch(
+            "signdata.processors.video2compression.probe_media",
+            return_value=self._info("av1"),
+        ), patch(
+            "signdata.processors.video2compression.transcode",
+        ) as transcode_mock:
+            result = Video2CompressionProcessor(config).run(context)
+
+        transcode_mock.assert_not_called()
+        assert result.stats["processing"]["already_efficient"] == 1
+        assert (mirror / "clip.webm").read_bytes() == b"s" * 200
+        assert not (mirror / "clip.mp4").exists()
+
+    def test_reencoded_source_lands_as_mp4(self, tmp_path):
+        """A real re-encode is genuinely an .mp4, whatever the source was."""
+        config, context, mirror = self._webm_context(tmp_path)
+
+        def write_smaller(_, __, output_path, *, max_bitrate_bps=None,
+                          source_pix_fmt=""):
+            Path(output_path).write_bytes(b"o" * 100)
+            return True
+
+        with patch(
+            "signdata.processors.video2compression.probe_media",
+            side_effect=[self._info("vp9"), self._info("av1")],
+        ), patch(
+            "signdata.processors.video2compression.transcode",
+            side_effect=write_smaller,
+        ):
+            result = Video2CompressionProcessor(config).run(context)
+
+        assert result.stats["processing"]["processed"] == 1
+        assert (mirror / "clip.mp4").read_bytes() == b"o" * 100
+        assert (mirror / "clip.mp4.compression.json").exists()
+        assert not (mirror / "clip.webm").exists()
+
+    def test_resume_recognises_a_passthrough_under_its_own_extension(
+        self, tmp_path
+    ):
+        """Otherwise every passthrough is redone on each resumed run."""
+        config, context, mirror = self._webm_context(tmp_path)
+        (mirror).mkdir(parents=True, exist_ok=True)
+        (mirror / "clip.webm").write_bytes(b"s" * 200)
+
+        with patch(
+            "signdata.processors.video2compression.probe_media",
+        ) as probe_mock, patch(
+            "signdata.processors.video2compression.transcode",
+        ) as transcode_mock:
+            result = Video2CompressionProcessor(config).run(context)
+
+        probe_mock.assert_not_called()
+        transcode_mock.assert_not_called()
+        assert result.stats["processing"]["skipped"] == 1
+
+    def test_passthrough_clears_a_stale_reencode_from_an_earlier_run(
+        self, tmp_path
+    ):
+        """One mirror entry per source video, even when the verdict flips.
+
+        A forced re-run that now decides against re-encoding must not leave
+        the old .mp4 behind, or the mirror double-counts the video and the
+        stale sidecar describes an encode that no longer exists.
+        """
+        config, context, mirror = self._webm_context(tmp_path)
+        context.force_all = True
+        mirror.mkdir(parents=True, exist_ok=True)
+        (mirror / "clip.mp4").write_bytes(b"stale")
+        (mirror / "clip.mp4.compression.json").write_text("{}", "utf-8")
+
+        with patch(
+            "signdata.processors.video2compression.probe_media",
+            return_value=self._info("av1"),
+        ), patch(
+            "signdata.processors.video2compression.transcode",
+        ):
+            Video2CompressionProcessor(config).run(context)
+
+        assert (mirror / "clip.webm").read_bytes() == b"s" * 200
+        assert not (mirror / "clip.mp4").exists()
+        assert not (mirror / "clip.mp4.compression.json").exists()
+
 
 class TestVideo2CompressionRegistration:
     def test_registered(self):

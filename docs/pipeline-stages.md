@@ -141,9 +141,16 @@ deleted.
 Outputs are written to:
 
 ```text
-{paths.output}/{run_name}/compressed/{source-relative-path}.mp4
-{paths.output}/{run_name}/compressed/{source-relative-path}.mp4.compression.json
+{paths.output}/{run_name}/compressed/{source-stem}.mp4                      # re-encoded
+{paths.output}/{run_name}/compressed/{source-stem}.mp4.compression.json     # its sidecar
+{paths.output}/{run_name}/compressed/{source-stem}{source-extension}        # passed through
 ```
+
+Re-encodes are always `.mp4`. A passthrough is a byte-for-byte hardlink, so it
+keeps the source's own extension rather than being relabelled — a mirror of
+`.webm` sources is a mix of `.mp4` and `.webm`. `resolve_video_path` retries on
+the stem when the exact `REL_PATH` is missing, so a manifest written against
+`videos/` still resolves against the mirror after you repoint `paths.videos`.
 
 The JSON sidecar records the source/output codec, pixel format, byte size,
 bitrate and the encoder settings used. Only re-encoded files get a sidecar;

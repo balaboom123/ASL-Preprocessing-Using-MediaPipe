@@ -7,11 +7,14 @@ stored file. Cropping or rescaling at this stage would bake one consumer's
 assumptions into the archive and silently degrade the others.
 
 The output directory is a *complete* mirror of the source: videos that shrank
-are written re-encoded (with a .compression.json sidecar), and videos that did
-not — already an efficient codec, no worthwhile saving, or a read/encode
-error — are hardlinked through untouched. So `compressed/` is a drop-in
-replacement for `videos/`: verify it, then repoint paths.videos at it or delete
-the originals yourself. This processor never deletes anything.
+are written re-encoded as .mp4 (with a .compression.json sidecar), and videos
+that did not — already an efficient codec, no worthwhile saving, or a
+read/encode error — are hardlinked through untouched, keeping their own
+container extension because the bytes are unchanged. A mirror of .webm sources
+is therefore a mix of .mp4 and .webm; `resolve_video_path` retries on the stem
+so a manifest written against `videos/` still resolves here. So `compressed/`
+is a drop-in replacement for `videos/`: verify it, then repoint paths.videos at
+it or delete the originals yourself. This processor never deletes anything.
 """
 
 import json
@@ -84,6 +87,26 @@ def _temporary_output_path(output_path: Path) -> Path:
 
 def _metadata_path(output_path: Path) -> Path:
     return output_path.with_suffix(f"{output_path.suffix}.compression.json")
+
+
+def _passthrough_path(encoded_path: Path, video_path: str) -> Path:
+    """Mirror path for a byte-for-byte passthrough of ``video_path``.
+
+    A passthrough is hardlinked, not remuxed, so it has to keep the source's
+    own container extension. Writing Matroska or WebM bytes into a ``.mp4``
+    name produces files that strict readers reject and that misreport the
+    archive's contents to anyone auditing it.
+    """
+    suffix = Path(video_path).suffix
+    if not suffix:
+        return encoded_path
+    return encoded_path.with_suffix(suffix)
+
+
+def _remove_output(path: Path) -> None:
+    """Drop a mirror entry and its sidecar."""
+    path.unlink(missing_ok=True)
+    _metadata_path(path).unlink(missing_ok=True)
 
 
 def _write_metadata(
@@ -180,18 +203,23 @@ class Video2CompressionProcessor(BaseProcessor):
 
         def compress(task: tuple[str, Path]) -> str:
             video_path, output_relpath = task
-            output_path = output_dir / output_relpath
+            encoded_path = output_dir / output_relpath
+            passthrough_path = _passthrough_path(encoded_path, video_path)
             output_label = str(output_relpath)
 
-            if not context.force_all and output_path.exists():
+            # Either name is a finished mirror entry for this video, so a
+            # resumed run must recognise both or it re-does every passthrough.
+            if not context.force_all and (
+                encoded_path.exists() or passthrough_path.exists()
+            ):
                 return "skipped"
 
-            temporary_path = _temporary_output_path(output_path)
+            temporary_path = _temporary_output_path(encoded_path)
             temporary_path.unlink(missing_ok=True)
             try:
                 status = self._compress_one(
                     video_path,
-                    output_path,
+                    encoded_path,
                     temporary_path,
                     output_label,
                     video_config,
@@ -205,11 +233,21 @@ class Video2CompressionProcessor(BaseProcessor):
             finally:
                 temporary_path.unlink(missing_ok=True)
 
-            # Keep the mirror complete: whatever we did not re-encode is passed
-            # through as the untouched original, so videos/ can be swapped out
-            # or deleted wholesale after review.
-            if status != "processed":
-                self._backfill_original(video_path, output_path, output_label)
+            # The two names collide whenever the source is already .mp4; only
+            # a differing suffix can leave a stale entry from an earlier run,
+            # and dropping it keeps one mirror entry per source video.
+            if status == "processed":
+                if passthrough_path != encoded_path:
+                    _remove_output(passthrough_path)
+            else:
+                # Keep the mirror complete: whatever we did not re-encode is
+                # passed through as the untouched original, so videos/ can be
+                # swapped out or deleted wholesale after review.
+                self._backfill_original(
+                    video_path, passthrough_path, output_label
+                )
+                if passthrough_path != encoded_path:
+                    _remove_output(encoded_path)
             return status
 
         # ffmpeg does the real work in a subprocess, so threads are enough to
