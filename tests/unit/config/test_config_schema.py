@@ -190,6 +190,46 @@ class TestProcessingConfig:
         assert isinstance(p.video_config, VideoProcessingConfig)
         assert p.video_config.codec == "libx264"
         assert p.video_config.padding == 0.0
+        assert p.video_config.crf == 20
+        assert p.video_config.preset == "medium"
+        assert p.video_config.aq_strength == 8
+        assert p.video_config.nvenc_gpu is None
+        assert p.video_config.max_bitrate_ratio == 0.8
+        assert p.video_config.min_video_reduction_ratio == 0.1
+
+    def test_video_config_rejects_invalid_compression_controls(self):
+        with pytest.raises(ValidationError):
+            VideoProcessingConfig(crf=64)
+        with pytest.raises(ValidationError):
+            VideoProcessingConfig(aq_strength=0)
+        with pytest.raises(ValidationError):
+            VideoProcessingConfig(max_bitrate_ratio=0.0)
+        with pytest.raises(ValidationError):
+            VideoProcessingConfig(min_video_reduction_ratio=1.0)
+
+    def test_video_config_rejects_codec_preset_mismatch(self):
+        """A silently-mapped preset is how the wrong encoder settings ship."""
+        with pytest.raises(ValidationError, match="p1-p7"):
+            VideoProcessingConfig(codec="hevc_nvenc", preset="medium")
+        with pytest.raises(ValidationError, match="NVENC-only"):
+            VideoProcessingConfig(codec="libx265", preset="p6")
+
+        nvenc = VideoProcessingConfig(codec="hevc_nvenc", preset="p6")
+        assert nvenc.preset == "p6"
+
+    def test_video_config_rejects_named_preset_on_numeric_encoder(self):
+        """libsvtav1 takes -preset as an int; a name fails only at encode."""
+        with pytest.raises(ValidationError, match="numeric preset"):
+            VideoProcessingConfig(codec="libsvtav1", preset="medium")
+        # The NVENC-only message would suggest 'medium', which is also wrong.
+        with pytest.raises(ValidationError, match="numeric preset"):
+            VideoProcessingConfig(codec="libsvtav1", preset="p6")
+        with pytest.raises(ValidationError, match="numeric preset"):
+            VideoProcessingConfig(codec="libsvtav1", preset="14")
+
+        assert VideoProcessingConfig(codec="libsvtav1", preset="8").preset == "8"
+        # YAML `preset: 8` arrives as an int and is coerced to str.
+        assert VideoProcessingConfig(codec="libsvtav1", preset=8).preset == "8"
 
     def test_invalid_processor_rejected(self):
         with pytest.raises(ValidationError):

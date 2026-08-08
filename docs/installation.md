@@ -14,6 +14,20 @@ This installs dependencies for MediaPipe pose jobs and the shipped CPU YOLO
 jobs. MMPose and MMDet are installed separately below because they require a
 matching CUDA and OpenMMLab stack.
 
+### FFmpeg availability
+
+`video2pose` and `video2parts` prefer FFmpeg for decoding when the executable
+is available on `PATH`, but automatically fall back to OpenCV under the base
+installation.
+
+`video2crop` and `video2compression` create encoded MP4 outputs and require a
+system FFmpeg installation. Install FFmpeg through the operating system's
+package manager, then verify it is visible:
+
+```bash
+ffmpeg -version
+```
+
 ## MMPose (GPU Required)
 
 MMPose whole-body extraction requires a CUDA-capable GPU. Follow these steps after the base installation:

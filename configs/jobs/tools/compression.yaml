@@ -6,16 +6,29 @@ dataset:
 processing:
   enabled: true
   processor: video2compression
-  detection: yolo
-  max_workers: 4
-  detection_config:
-    model: yolo11m.pt
-    device: "cuda:0"
-    batch_size: 16
-    confidence_threshold: 0.5
+  # Writes a COMPLETE mirror to <output_dir>/compressed: shrunk files where it
+  # helped, originals hardlinked through where it did not. Nothing is deleted.
+  # After the run, verify the mirror, then repoint paths.videos at it or delete
+  # the originals yourself. Re-encoded files carry a .compression.json sidecar;
+  # passthrough originals have none.
+  sample_rate: null  # compression always preserves the source FPS
+  # No detection backend: compression re-encodes whole frames and never crops,
+  # so downstream consumers still choose their own regions.
+  max_workers: 3
   video_config:
-    codec: libx264
-    padding: 0.1
+    # Best overall profile from the 3-video / 616-segment MediaPipe benchmark:
+    # 49.10% storage reduction, 93.36% either-hand detection, and 95.81%
+    # landmark capture. AV1 NVENC requires an AV1-capable GPU; CUDA 0 is the
+    # RTX 4060 Ti used for the benchmark.
+    codec: av1_nvenc
+    preset: p7          # p1 fastest ... p7 best compression efficiency
+    crf: 34             # emitted as -cq 34 for NVENC
+    aq_strength: 8
+    nvenc_gpu: 0
+    max_bitrate_ratio: 0.52
+    min_video_reduction_ratio: 0.10
+  # No resize and no fps change: video2pose, video2crop and video2parts all
+  # re-derive their crops from these frames at full resolution.
 
 post_processing:
   enabled: false

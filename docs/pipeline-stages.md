@@ -16,6 +16,7 @@
 | `dataset.manifest` | manifest TSV/CSV at `paths.manifest` | `dataset.manifest: true` |
 | `processing.video2pose` | raw landmarks at `{paths.output}/{run_name}/raw/{sample_id}.npy` | `processing.enabled: true` and `processing.processor: video2pose` |
 | `processing.video2crop` | cropped clips at `{paths.output}/{run_name}/raw/{sample_id}.mp4` | `processing.enabled: true` and `processing.processor: video2crop` |
+| `processing.video2compression` | native-FPS compressed videos at `{paths.output}/{run_name}/compressed/` | `processing.enabled: true` and `processing.processor: video2compression` |
 | `processing.video2parts` | part streams at `{paths.output}/{run_name}/raw/{sample_id}/` | `processing.enabled: true` and `processing.processor: video2parts` |
 | `post_processing.normalize` | normalized landmarks at `{paths.output}/{run_name}/normalized/{sample_id}.npy` | `post_processing.enabled: true` with a `post_processing.normalize` block |
 | `output.webdataset` | shards at `{paths.webdataset}/{run_name}/shard-000000.tar` | `output.enabled: true` |
@@ -120,6 +121,41 @@ Key config paths:
 - `processing.video_config.padding`
 - `processing.video_config.resize`
 - `processing.sample_rate`
+
+## `processing.video2compression`
+
+Re-encodes each unique source video. Geometry, frame cadence and colour are
+left exactly as the source has them — there is no detection, no crop and no
+rescale, because every downstream consumer re-derives its own regions:
+
+1. probe the source codec, geometry, duration and bitrate with `ffprobe`
+2. leave the source alone when it is already in the target codec family
+3. encode to a temporary file with the configured codec and quality
+4. reject the encode if geometry or duration changed, or if it did not meet
+   `min_video_reduction_ratio`; otherwise promote it and write a sidecar
+
+The output directory is a complete mirror: anything not re-encoded is
+hardlinked (or copied) through untouched, so nothing is lost. Nothing is ever
+deleted.
+
+Outputs are written to:
+
+```text
+{paths.output}/{run_name}/compressed/{source-stem}.mp4                      # re-encoded
+{paths.output}/{run_name}/compressed/{source-stem}.mp4.compression.json     # its sidecar
+{paths.output}/{run_name}/compressed/{source-stem}{source-extension}        # passed through
+```
+
+Re-encodes are always `.mp4`. A passthrough is a byte-for-byte hardlink, so it
+keeps the source's own extension rather than being relabelled — a mirror of
+`.webm` sources is a mix of `.mp4` and `.webm`. `resolve_video_path` retries on
+the stem when the exact `REL_PATH` is missing, so a manifest written against
+`videos/` still resolves against the mirror after you repoint `paths.videos`.
+
+The JSON sidecar records the source/output codec, pixel format, byte size,
+bitrate and the encoder settings used. Only re-encoded files get a sidecar;
+passed-through originals have none. `processing.sample_rate` is not applied by
+this processor; source FPS is preserved.
 
 ## `processing.video2parts`
 

@@ -113,6 +113,10 @@ class TestYouTubeASLSourceConfig:
         assert source.languages == DEFAULT_TRANSCRIPT_LANGUAGES
         assert source.download_format == DEFAULT_DOWNLOAD_FORMAT
         assert "worstaudio" in source.download_format
+        # Efficient codecs must be preferred over the h264 `worstvideo` default.
+        assert source.download_format.index("av01") < source.download_format.index(
+            "worstvideo[height>=720][fps>=24]+worstaudio"
+        )
         assert source.concurrent_fragments == 5
         assert source.text_processing.fix_encoding is True
         assert source.text_processing.lowercase is False
@@ -181,6 +185,11 @@ def test_yt_dlp_config_uses_python_api_keys(tmp_path):
     assert config["concurrent_fragment_downloads"] == 3
     assert "nocheckcertificate" not in config
     assert all("-" not in key for key in config)
+    # FFmpegVideoConvertor re-encodes; only the remuxer leaves the downloaded
+    # stream untouched when the container has to change.
+    assert [pp["key"] for pp in config["postprocessors"]] == [
+        "FFmpegVideoRemuxer"
+    ]
 
 
 class TestYouTubeASLTranscriptDownload:

@@ -66,10 +66,82 @@ POSE_CONFIG_MAP = {
 
 # --- Video processing config ---
 
+NVENC_PRESETS = frozenset(f"p{index}" for index in range(1, 8))
+
+# Encoders whose -preset is an integer rather than an x264-style name, with the
+# inclusive range ffmpeg accepts. SVT-AV1 also counts the opposite way to x264:
+# the *high* end is the fastest, and its ffmpeg default is -2.
+NUMERIC_PRESET_RANGES = {"libsvtav1": (-2, 13)}
+
+
 class VideoProcessingConfig(StrictModel):
     codec: str = "libx264"
     padding: float = 0.0
     resize: list[int] | None = None
+    # Constant-quality level: -crf on software encoders, -cq on NVENC. AV1
+    # allows up to 63; h264/hevc cap at 51.
+    crf: int = Field(default=20, ge=0, le=63)
+    preset: str = "medium"
+    # NVENC spatial/temporal AQ strength (1 weakest, 15 strongest).
+    aq_strength: int = Field(default=8, ge=1, le=15)
+    # Physical NVIDIA GPU index passed to NVENC/NVDEC; null uses FFmpeg default.
+    nvenc_gpu: int | None = Field(default=None, ge=0)
+    # VBV ceiling as a fraction of the source bitrate; null disables the cap.
+    max_bitrate_ratio: float | None = Field(default=0.8, gt=0.0)
+    min_video_reduction_ratio: float = Field(default=0.10, ge=0.0, lt=1.0)
+    encoding_timeout_seconds: int = Field(default=3600, gt=0)
+
+    @field_validator("preset", mode="before")
+    @classmethod
+    def coerce_numeric_preset(cls, value):
+        """Accept `preset: 8` unquoted, the natural way to write libsvtav1.
+
+        Pydantic will not narrow an int to a str, so without this the correct
+        value for a numeric-preset encoder fails with a generic type error
+        instead of the codec-aware message below.
+        """
+        return str(value) if isinstance(value, int) else value
+
+    @model_validator(mode="after")
+    def validate_codec_preset(self):
+        """Catch a codec/preset mismatch at config load, not 3 hours in.
+
+        Each encoder family names its presets differently, and ffmpeg only
+        complains once the encode starts. Checked in family order so the
+        error message can suggest the form that codec actually wants.
+        """
+        if self.codec.endswith("_nvenc"):
+            if self.preset not in NVENC_PRESETS:
+                raise ValueError(
+                    f"codec={self.codec!r} needs an NVENC preset p1-p7 "
+                    f"(p1 fastest, p7 best), got {self.preset!r}"
+                )
+            return self
+
+        numeric_range = NUMERIC_PRESET_RANGES.get(self.codec)
+        if numeric_range is not None:
+            low, high = numeric_range
+            try:
+                level = int(self.preset)
+            except ValueError:
+                raise ValueError(
+                    f"codec={self.codec!r} takes a numeric preset {low} to "
+                    f"{high} ({high} fastest), not an x264-style name like "
+                    f"{self.preset!r}"
+                ) from None
+            if not low <= level <= high:
+                raise ValueError(
+                    f"codec={self.codec!r} takes a numeric preset {low} to "
+                    f"{high} ({high} fastest), got {level}"
+                )
+            return self
+
+        if self.preset in NVENC_PRESETS:
+            raise ValueError(
+                f"preset={self.preset!r} is NVENC-only, but codec="
+                f"{self.codec!r} is a software encoder (try 'medium')"
+            )
+        return self
 
 
 class PartsProcessingConfig(StrictModel):

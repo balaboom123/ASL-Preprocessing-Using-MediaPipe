@@ -43,7 +43,8 @@ def test_union_bboxes_uses_largest_detection_per_frame():
 @pytest.mark.parametrize(
     ("processor_class", "processor_name", "factory"),
     [
-        (Video2CompressionProcessor, "video2compression", "create_detector"),
+        # Compression has no detection backend; its expensive call is ffmpeg.
+        (Video2CompressionProcessor, "video2compression", "transcode"),
         (Video2CropProcessor, "video2crop", "create_detector"),
         (Video2PartsProcessor, "video2parts", "create_estimator"),
         (Video2PoseProcessor, "video2pose", "create_detector"),

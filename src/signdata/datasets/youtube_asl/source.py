@@ -35,8 +35,17 @@ DEFAULT_TRANSCRIPT_LANGUAGES = [
     "en-JM",
 ]
 
+# yt-dlp's format sort ranks vcodec above size, so a bare `worstvideo` resolves
+# to the worst-ranked *codec* (h264) — the largest stream at a given resolution.
+# YouTube's av01/vp9 renditions are independent encodes of the same master, not
+# transcodes, so preferring them is a free ~30-50% size win. Each added branch
+# keeps the original ">=720p, lowest qualifying resolution" pick; only the codec
+# changes. Falls through to the previous behaviour when neither is offered.
 DEFAULT_DOWNLOAD_FORMAT = (
-    "worstvideo[height>=720][fps>=24]+worstaudio"
+    "worstvideo[height>=720][fps>=24][vcodec^=av01]+worstaudio"
+    "/worstvideo[height>=720][fps>=24][vcodec^=vp09]+worstaudio"
+    "/worstvideo[height>=720][fps>=24][vcodec^=vp9]+worstaudio"
+    "/worstvideo[height>=720][fps>=24]+worstaudio"
     "/bestvideo[height>=480][height<720][fps>=24][fps<=60]+worstaudio"
     "/bestvideo[height>=480][height<=1080][fps>=14]+worstaudio"
     "/best"

@@ -125,7 +125,9 @@ def resolve_video_path(
     """Resolve the physical video file path for a manifest row.
 
     Resolution order:
-    1. If ``REL_PATH`` column is present and non-null → ``base_dir / REL_PATH``
+    1. If ``REL_PATH`` column is present and non-null → ``base_dir / REL_PATH``,
+       falling back to the same stem under another video extension when that
+       exact file is absent
     2. Otherwise if ``VIDEO_NAME`` is present and non-null → use that stem
     3. Otherwise → ``find_video_file(base_dir, VIDEO_ID)`` (extension-aware)
 
@@ -146,7 +148,15 @@ def resolve_video_path(
 
     rel_path = row_value(row, "REL_PATH")
     if rel_path:
-        return base_dir / rel_path
+        candidate = base_dir / rel_path
+        if candidate.exists():
+            return candidate
+        # video2compression re-encodes into .mp4 but passes other sources
+        # through under their own container, so a manifest written against
+        # videos/ names a different extension than the mirror holds. Retry on
+        # the stem so compressed/ stays the drop-in replacement it claims to
+        # be. find_video_file still returns a deterministic path on a miss.
+        return find_video_file(candidate.parent, candidate.stem)
 
     video_name = row_value(row, "VIDEO_NAME")
     if video_name:

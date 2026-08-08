@@ -24,8 +24,13 @@ class OpenASLSourceConfig(BaseModel):
     bbox_json: str = ""
     text_column: str = "en"
     availability_policy: AvailabilityPolicy = "drop_unavailable"
+    # Same vcodec-outranks-size trap as youtube_asl; see DEFAULT_DOWNLOAD_FORMAT.
     download_format: str = (
-        "worstvideo[height>=720][fps>=24]/bestvideo[height>=480]"
+        "worstvideo[height>=720][fps>=24][vcodec^=av01]"
+        "/worstvideo[height>=720][fps>=24][vcodec^=vp09]"
+        "/worstvideo[height>=720][fps>=24][vcodec^=vp9]"
+        "/worstvideo[height>=720][fps>=24]"
+        "/bestvideo[height>=480]"
     )
     rate_limit: str = "5M"
     concurrent_fragments: int = 5

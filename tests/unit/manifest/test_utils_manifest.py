@@ -136,6 +136,31 @@ class TestResolveVideoPath:
         result = resolve_video_path(row, "/data/videos")
         assert str(result) == "/data/videos/train/00001.mp4"
 
+    def test_rel_path_falls_back_to_another_extension(self, tmp_path):
+        """Keeps video2compression's mirror a drop-in replacement.
+
+        The mirror re-encodes into .mp4 but passes other sources through
+        under their own container, so a manifest written against videos/
+        names an extension the mirror does not have.
+        """
+        (tmp_path / "train").mkdir()
+        (tmp_path / "train" / "00001.webm").write_bytes(b"v")
+        row = pd.Series({"REL_PATH": "train/00001.mp4"})
+
+        result = resolve_video_path(row, tmp_path)
+
+        assert result == tmp_path / "train" / "00001.webm"
+
+    def test_existing_rel_path_wins_over_a_sibling_extension(self, tmp_path):
+        """An exact hit is never second-guessed."""
+        (tmp_path / "00001.mp4").write_bytes(b"v")
+        (tmp_path / "00001.webm").write_bytes(b"v")
+        row = pd.Series({"REL_PATH": "00001.webm"})
+
+        result = resolve_video_path(row, tmp_path)
+
+        assert result == tmp_path / "00001.webm"
+
     def test_null_rel_path_falls_back(self):
         row = pd.Series({
             "VIDEO_ID": "abc123",
