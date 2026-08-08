@@ -68,10 +68,18 @@ POSE_CONFIG_MAP = {
 
 NVENC_PRESETS = frozenset(f"p{index}" for index in range(1, 8))
 
-# Encoders whose -preset is an integer rather than an x264-style name, with the
-# inclusive range ffmpeg accepts. SVT-AV1 also counts the opposite way to x264:
-# the *high* end is the fastest, and its ffmpeg default is -2.
-NUMERIC_PRESET_RANGES = {"libsvtav1": (-2, 13)}
+# Encoders whose speed knob is an integer rather than an x264-style name, as
+# (ffmpeg flag, low, high) over the inclusive range ffmpeg accepts.
+#
+# The flag travels with the range because it is not always -preset: libaom-av1
+# and libvpx-vp9 expose no -preset at all and use -cpu-used instead, so
+# `_encoder_args` emits whichever flag the codec actually has. All three count
+# the opposite way to x264 — the *high* end is the fastest.
+NUMERIC_PRESET_SPECS = {
+    "libsvtav1": ("-preset", -2, 13),
+    "libaom-av1": ("-cpu-used", 0, 8),
+    "libvpx-vp9": ("-cpu-used", -8, 8),
+}
 
 
 class VideoProcessingConfig(StrictModel):
@@ -118,22 +126,21 @@ class VideoProcessingConfig(StrictModel):
                 )
             return self
 
-        numeric_range = NUMERIC_PRESET_RANGES.get(self.codec)
-        if numeric_range is not None:
-            low, high = numeric_range
+        numeric_spec = NUMERIC_PRESET_SPECS.get(self.codec)
+        if numeric_spec is not None:
+            flag, low, high = numeric_spec
+            wanted = (
+                f"codec={self.codec!r} takes a numeric preset {low} to {high} "
+                f"({high} fastest, sent to ffmpeg as {flag})"
+            )
             try:
                 level = int(self.preset)
             except ValueError:
                 raise ValueError(
-                    f"codec={self.codec!r} takes a numeric preset {low} to "
-                    f"{high} ({high} fastest), not an x264-style name like "
-                    f"{self.preset!r}"
+                    f"{wanted}, not an x264-style name like {self.preset!r}"
                 ) from None
             if not low <= level <= high:
-                raise ValueError(
-                    f"codec={self.codec!r} takes a numeric preset {low} to "
-                    f"{high} ({high} fastest), got {level}"
-                )
+                raise ValueError(f"{wanted}, got {level}")
             return self
 
         if self.preset in NVENC_PRESETS:

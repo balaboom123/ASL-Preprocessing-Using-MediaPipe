@@ -82,6 +82,49 @@ class TestEncoderArgs:
         assert args[args.index("-crf") + 1] == "22"
         assert args[args.index("-preset") + 1] == "slow"
 
+    def test_cpu_used_encoders_never_receive_preset(self):
+        """libaom-av1 and libvpx-vp9 expose no -preset.
+
+        ffmpeg does not reject it — it encodes at the encoder's own default
+        speed and only warns, which _run_ffmpeg's unused-option guard turns
+        into a hard failure. So these codecs were unusable at any preset.
+        """
+        for codec in ("libaom-av1", "libvpx-vp9"):
+            args = _encoder_args(VideoProcessingConfig(codec=codec, preset="4"), None)
+            assert "-preset" not in args
+            assert args[args.index("-cpu-used") + 1] == "4"
+
+    def test_cpu_used_encoders_pin_bitrate_to_the_cap(self):
+        """Both refuse to open when -maxrate arrives without an explicit -b:v.
+
+        "Rate control parameters set without a bitrate" kills the encode, and
+        -b:v 0 does not satisfy it, so the target has to be the ceiling.
+        """
+        config = VideoProcessingConfig(codec="libvpx-vp9", preset="4")
+
+        capped = _encoder_args(config, 400_000)
+        assert capped[capped.index("-b:v") + 1] == "400000"
+        assert capped[capped.index("-maxrate") + 1] == "400000"
+
+        # With no cap, 0 means pure constant quality rather than "no bitrate".
+        uncapped = _encoder_args(config, None)
+        assert uncapped[uncapped.index("-b:v") + 1] == "0"
+        assert "-maxrate" not in uncapped
+
+    def test_preset_encoders_are_left_alone(self):
+        """The -b:v/-cpu-used handling must not leak into x264/x265/SVT-AV1."""
+        for codec, preset in (
+            ("libx264", "medium"),
+            ("libx265", "slow"),
+            ("libsvtav1", "8"),
+        ):
+            args = _encoder_args(
+                VideoProcessingConfig(codec=codec, preset=preset), 400_000
+            )
+            assert "-cpu-used" not in args
+            assert "-b:v" not in args
+            assert args[args.index("-preset") + 1] == preset
+
     def test_bitrate_cap_sets_a_four_times_buffer(self):
         config = VideoProcessingConfig(codec="libx264")
         args = _encoder_args(config, 1_000_000)

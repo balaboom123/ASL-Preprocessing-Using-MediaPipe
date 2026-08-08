@@ -231,6 +231,35 @@ class TestProcessingConfig:
         # YAML `preset: 8` arrives as an int and is coerced to str.
         assert VideoProcessingConfig(codec="libsvtav1", preset=8).preset == "8"
 
+    def test_cpu_used_encoders_validate_against_their_own_range(self):
+        """libaom-av1 and libvpx-vp9 have no -preset at all, only -cpu-used.
+
+        Their ranges differ from each other and from libsvtav1, so the default
+        'medium' and a borrowed SVT-AV1 number are both wrong.
+        """
+        with pytest.raises(ValidationError, match="numeric preset"):
+            VideoProcessingConfig(codec="libaom-av1", preset="medium")
+        with pytest.raises(ValidationError, match="numeric preset"):
+            VideoProcessingConfig(codec="libvpx-vp9", preset="medium")
+
+        # 9 is inside libsvtav1's -2..13 but outside libaom's 0..8.
+        with pytest.raises(ValidationError, match="numeric preset"):
+            VideoProcessingConfig(codec="libaom-av1", preset="9")
+        # -8 is legal for libvpx but not for libaom.
+        with pytest.raises(ValidationError, match="numeric preset"):
+            VideoProcessingConfig(codec="libaom-av1", preset="-8")
+        assert VideoProcessingConfig(codec="libvpx-vp9", preset="-8").preset == "-8"
+
+        assert VideoProcessingConfig(codec="libaom-av1", preset="6").preset == "6"
+        assert VideoProcessingConfig(codec="libvpx-vp9", preset=4).preset == "4"
+
+    def test_numeric_preset_error_names_the_ffmpeg_flag(self):
+        """'preset' is our field name; -cpu-used is what ffmpeg is told."""
+        with pytest.raises(ValidationError, match=r"-cpu-used"):
+            VideoProcessingConfig(codec="libvpx-vp9", preset="medium")
+        with pytest.raises(ValidationError, match=r"-preset"):
+            VideoProcessingConfig(codec="libsvtav1", preset="medium")
+
     def test_invalid_processor_rejected(self):
         with pytest.raises(ValidationError):
             ProcessingConfig(processor="invalid")
