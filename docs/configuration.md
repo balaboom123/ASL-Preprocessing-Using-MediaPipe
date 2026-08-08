@@ -295,11 +295,18 @@ source FPS. It does not upsample or invent frames.
 `preset` is validated against the codec at config load, because ffmpeg only
 rejects a mismatch once the encode starts:
 
-| Codec | Preset form | Example |
-|---|---|---|
-| `*_nvenc` | `p1`–`p7` (`p1` fastest, `p7` best) | `p7` |
-| `libsvtav1` | integer `-2`–`13` (**`13` fastest**, the reverse of x264) | `8` |
-| `libx264`, `libx265` | x264 names | `medium` |
+| Codec | Preset form | Sent to ffmpeg as | Example |
+|---|---|---|---|
+| `*_nvenc` | `p1`–`p7` (`p1` fastest, `p7` best) | `-preset` | `p7` |
+| `libsvtav1` | integer `-2`–`13` (**`13` fastest**, the reverse of x264) | `-preset` | `8` |
+| `libaom-av1` | integer `0`–`8` (**`8` fastest**) | `-cpu-used` | `6` |
+| `libvpx-vp9` | integer `-8`–`8` (**`8` fastest**) | `-cpu-used` | `4` |
+| `libx264`, `libx265` | x264 names | `-preset` | `medium` |
+
+`libaom-av1` and `libvpx-vp9` have no `-preset` option at all, so `preset` is
+emitted as `-cpu-used` for them. These two also reject a bitrate ceiling unless
+an explicit `-b:v` accompanies it, so `max_bitrate_ratio` is applied by setting
+the bitrate target *to* the ceiling (constrained quality) rather than to `0`.
 
 The CRF, AQ, GPU, bitrate-ratio, reduction-gate and timeout controls are read by
 `video2compression`. `video2crop` keeps its own near-lossless quality target

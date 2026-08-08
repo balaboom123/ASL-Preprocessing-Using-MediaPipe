@@ -11,7 +11,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from ...config.schema import VideoProcessingConfig
+from ...config.schema import NUMERIC_PRESET_SPECS, VideoProcessingConfig
 from ...utils.video import resolve_effective_sample_fps
 
 logger = logging.getLogger(__name__)
@@ -352,8 +352,13 @@ def _encoder_args(
     encode at its own default rate, which is how a "compression" pass ends up
     producing larger files than it consumed. Constant quality on NVENC is
     `-cq`, and it only takes effect together with `-rc vbr -b:v 0`.
+
+    The speed knob is likewise not spelled the same everywhere: libaom-av1 and
+    libvpx-vp9 have no `-preset`, only `-cpu-used`.
     """
-    args = ["-c:v", video_config.codec, "-preset", video_config.preset]
+    numeric_spec = NUMERIC_PRESET_SPECS.get(video_config.codec)
+    speed_flag = numeric_spec[0] if numeric_spec else "-preset"
+    args = ["-c:v", video_config.codec, speed_flag, video_config.preset]
     if video_config.codec.endswith("_nvenc") and video_config.nvenc_gpu is not None:
         args += ["-gpu", str(video_config.nvenc_gpu)]
 
@@ -373,6 +378,14 @@ def _encoder_args(
         ]
     else:
         args += ["-crf", str(video_config.crf)]
+        if speed_flag == "-cpu-used":
+            # libvpx-vp9 and libaom-av1 refuse to open the encoder when
+            # -maxrate/-bufsize arrive without an explicit -b:v ("Rate control
+            # parameters set without a bitrate"), and -b:v 0 does not satisfy
+            # them. Pointing the target at the ceiling turns the VBV cap into
+            # constrained quality, which is what max_bitrate_ratio asks for;
+            # 0 keeps pure constant quality when there is no cap.
+            args += ["-b:v", str(max_bitrate_bps or 0)]
 
     if max_bitrate_bps:
         # A VBV ceiling, not a quality target: loose enough that -cq/-crf still
